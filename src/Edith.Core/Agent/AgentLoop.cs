@@ -54,6 +54,9 @@ public sealed record AgentOptions
     /// <summary>The same call (name + arguments) more often than this means the model is looping.</summary>
     public int MaxIdenticalCalls { get; init; } = 1;
 
+    /// <summary>One tool used this many times in a turn (with different arguments) is a search that does not end: stop it.</summary>
+    public int MaxCallsPerTool { get; init; } = 3;
+
     /// <summary>Tool calls handled per model turn; extra ones are ignored.</summary>
     public int MaxCallsPerStep { get; init; } = 3;
 
@@ -101,6 +104,7 @@ public sealed class AgentLoop(
         var messages = start.ToList();
         var steps = new List<AgentStep>();
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        var perTool = new Dictionary<string, int>(StringComparer.Ordinal);
 
         for (int step = 0; step < options.MaxSteps; step++)
         {
@@ -126,6 +130,13 @@ public sealed class AgentLoop(
                     // The call is already in the history; a call without a result makes some
                     // providers (GigaChat: HTTP 422) refuse the whole conversation.
                     messages.Add(ToolResultMessage(call, "Повторный вызов не выполнен: ответь по уже полученным данным."));
+                    return await FinishAsync(messages, steps, step, AgentStop.Looping, cancellationToken);
+                }
+
+                perTool[call.Name] = perTool.GetValueOrDefault(call.Name) + 1;
+                if (!options.RepeatableTools.Contains(call.Name) && perTool[call.Name] > options.MaxCallsPerTool)
+                {
+                    messages.Add(ToolResultMessage(call, "Этим инструментом уже много раз искали: ответь по уже полученным данным."));
                     return await FinishAsync(messages, steps, step, AgentStop.Looping, cancellationToken);
                 }
 

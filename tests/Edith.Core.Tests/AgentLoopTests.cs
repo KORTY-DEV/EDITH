@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Edith.Core.Agent;
 
 namespace Edith.Core.Tests;
@@ -158,5 +158,20 @@ public sealed class AgentLoopTests
         var loop = new AgentLoop(new ScriptedModel(true, new ChatReply("  ", [])), (_, _) => Task.FromResult(""));
 
         Assert.Equal(AgentStop.Empty, (await loop.RunAsync(Start, Tools, null, CancellationToken.None)).Stop);
+    }
+
+    [Fact]
+    public async Task SameToolWithDifferentArguments_IsStoppedAfterThreeCalls()
+    {
+        // A search that never ends: the model keeps rewording the query (it once asked the notes eight times in a row).
+        ChatReply Search(string q) => new("", [new ToolCall("find_files", Args("{\"pattern\":\"" + q + "\"}"))]);
+        var model = new ScriptedModel(true, Search("a"), Search("b"), Search("c"), Search("d"), Search("e"), new ChatReply("Ответ по тому, что есть.", []));
+        int executed = 0;
+        var loop = new AgentLoop(model, (_, _) => { executed++; return Task.FromResult("ничего"); });
+
+        AgentResult result = await loop.RunAsync(Start, Tools, new AgentOptions { MaxSteps = 8 }, default);
+
+        Assert.Equal(AgentStop.Looping, result.Stop);
+        Assert.Equal(3, executed);
     }
 }

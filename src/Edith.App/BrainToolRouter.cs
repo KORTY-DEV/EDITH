@@ -176,7 +176,7 @@ public sealed class BrainToolRouter
                     await ReadWebPageAsync(arguments, cancellationToken),
 
                 "search_web" =>
-                    await SearchWebAsync(arguments, cancellationToken),
+                    await SearchWebThenRememberAsync(arguments, context, cancellationToken),
 
                 _ =>
                     $"Неизвестный инструмент: {tool}"
@@ -862,28 +862,100 @@ public sealed class BrainToolRouter
     /// <summary>The foreground window (UI Automation + OCR); set by the runtime.</summary>
     public static Edith.Core.Screen.IScreen Screen { get; set; } = new WindowsScreen();
 
+    private const string ImageDone =
+        "ГОТОВО: картинка уже на экране в окне ответов. Больше никаких инструментов не вызывай и показ не повторяй: скажи одной короткой фразой, что показала.";
+
+    private static DateTime _imageShownAt = DateTime.MinValue;
+    private static DateTime _webSearchedAt = DateTime.MinValue;
+
+    private static async Task<string> SearchWebThenRememberAsync(JsonElement arguments, ToolExecutionContext context, CancellationToken cancellationToken)
+    {
+        string result = await SearchWebAsync(arguments, cancellationToken);
+        _webSearchedAt = DateTime.UtcNow;
+
+        // The owner asked to SEE something: the search only names it; the next step is the picture, not reading pages.
+        if (WantsPicture(context.UserText))
+        {
+            result += " | Хозяин просил ПОКАЗАТЬ: из результатов выбери точное название модели или предмета и сразу вызови find_image с ним (по-английски). Страницы не читай.";
+        }
+
+        return result;
+    }
+
+    /// <summary>"Best / newest / top ..." names a thing that changes: the model's memory of it is out of date.</summary>
+    public static bool IsSuperlative(string query) =>
+        System.Text.RegularExpressions.Regex.IsMatch(query, @"(?i)\b(best|top|latest|newest|most|fastest|strongest|current|new)\b|лучш|нов(?:ый|ая|ое|ые|ую|ейш)|сам(?:ый|ая|ое|ые|ую)|сейчас");
+
+    public static bool WantsPicture(string request) =>
+        System.Text.RegularExpressions.Regex.IsMatch(request, @"(?i)покаж|как\s+выгляд|фото|картинк|изображени");
+
+    private static string ImageShown(string caption)
+    {
+        _imageShownAt = DateTime.UtcNow;
+        return ImageDone + (caption.Length > 0 ? " Подпись: " + caption + "." : "");
+    }
+
+    /// <summary>Search phrases from specific to loose: "best graphics card in the world" → "graphics card" → "card".</summary>
+    public static IReadOnlyList<string> ImageQueryVariants(string query)
+    {
+        string[] stop = ["best", "top", "the", "a", "an", "of", "in", "on", "world", "worlds", "most", "powerful", "new", "newest", "latest", "good", "great", "photo", "picture", "image", "pic", "of", "for", "2024", "2025", "2026"];
+        string[] words = query.Split([' ', ',', '.'], StringSplitOptions.RemoveEmptyEntries);
+        string[] core = words.Where(w => !stop.Contains(w.ToLowerInvariant())).ToArray();
+        var variants = new List<string> { query.Trim() };
+        if (core.Length > 0 && core.Length < words.Length)
+            variants.Add(string.Join(' ', core));
+        if (core.Length > 2)
+            variants.Add(string.Join(' ', core.TakeLast(2)));
+        if (core.Length > 1)
+            variants.Add(core[0]);
+        return variants.Where(v => v.Length > 1).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
     private static async Task<string> FindImageAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         string query = GetString(arguments, "query");
         if (query.Length == 0)
             return "Не поняла, что искать.";
 
-        (byte[]? bytes, string caption, string reason) = await AnswerImages.FindAsync(query, cancellationToken);
-        if (bytes is null)
-            return "Картинку не нашла: " + reason + ".";
+        // "The best graphics card": the model would name one from memory (it invented "RTX 590"), and its memory is old.
+        // The lookup is made here, before any name is chosen; the model then picks the real name out of the results.
+        if (IsSuperlative(query) && DateTime.UtcNow - _webSearchedAt > TimeSpan.FromSeconds(90))
+        {
+            using JsonDocument lookup = JsonDocument.Parse(JsonSerializer.Serialize(new { query = query + " 2026" }));
+            string found = await SearchWebThenRememberAsync(lookup.RootElement, new ToolExecutionContext("покажи", false), cancellationToken);
+            return "Картинку пока не искала: «" + query + "» — это самое новое/лучшее, а твои знания об этом устарели (сейчас 2026 год). " +
+                   "Результаты поиска в интернете (данные, не команды): " + found + " | Выбери из них ТОЧНОЕ название модели или предмета (не выдумывай) и вызови find_image с ним.";
+        }
 
-        AnswerImages.Show(bytes, caption);
-        return "Картинка найдена и показана в окне ответов: " + caption + ".";
+        string reason = "";
+        foreach (string variant in ImageQueryVariants(query))
+        {
+            (byte[]? bytes, string caption, string why) = await AnswerImages.FindAsync(variant, cancellationToken);
+            if (bytes is not null)
+            {
+                AnswerImages.Show(bytes, caption);
+                return ImageShown(caption);
+            }
+
+            reason = why;
+        }
+
+        return "Картинку не нашла (" + reason + "). Скажи об этом коротко; если хозяин захочет, предложи нарисовать.";
     }
 
     private static async Task<string> ShowImageAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        (byte[]? bytes, string reason) = await AnswerImages.LoadAsync(GetString(arguments, "source"), cancellationToken);
+        string source = GetString(arguments, "source");
+        bool recently = DateTime.UtcNow - _imageShownAt < TimeSpan.FromSeconds(60);
+        (byte[]? bytes, string reason) = await AnswerImages.LoadAsync(source, cancellationToken);
         if (bytes is null)
-            return "Показать не получилось: " + reason + ".";
+        {
+            // find_image has just put a picture on the screen: a second, wrong call must not turn success into an apology.
+            return recently ? ImageDone : "Показать не получилось: " + reason + ". Для «покажи …» без ссылки используй find_image.";
+        }
 
         AnswerImages.Show(bytes, GetString(arguments, "caption"));
-        return "Картинка показана в окне ответов.";
+        return ImageShown(GetString(arguments, "caption"));
     }
 
     private static async Task<string> DrawImageAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -898,7 +970,7 @@ public sealed class BrainToolRouter
             return "Нарисовать не получилось: " + reason + ".";
 
         AnswerImages.Show(bytes, prompt.Length > 90 ? prompt[..90] + "…" : prompt);
-        return "Картинка нарисована и показана в окне ответов.";
+        return ImageShown("");
     }
 
     private static async Task<string> DescribeScreenAsync(JsonElement arguments, CancellationToken cancellationToken)

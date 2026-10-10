@@ -607,6 +607,13 @@ public sealed class ResponseEngine
             return librarianReply;
         }
 
+        if (Edith.Core.SpokenMath.TryAnswer(command, out string mathAnswer))
+        {
+            LastRoute = "Math";
+            WriteRouteDiagnostics(command, IntentRoute.DirectFastPath, "math", 0, 1.0);
+            return mathAnswer.EndsWith('.') ? mathAnswer : mathAnswer + ".";
+        }
+
         if (UiModes.TryHandle(command, out string modeReply))
         {
             LastRoute = "UiMode";

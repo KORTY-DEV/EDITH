@@ -123,4 +123,15 @@ public sealed class PulseTests : IDisposable
         Assert.Contains("новых заметок: 2", brief);
         Assert.Equal("", PulseBuilder.Brief([], [], _now, 0));
     }
+
+    [Fact]
+    public void Brief_QuotesOnlyRussianCommitSubjects()
+    {
+        string english = PulseBuilder.Brief([Repo("EDITH", 0, subject: "Short-phrase follow-up threshold 3 words")], [], _now, 0);
+        string russian = PulseBuilder.Brief([Repo("EDITH", 0, subject: "Починил шар при речи")], [], _now, 0);
+
+        Assert.DoesNotContain("Short-phrase", english);
+        Assert.Contains("EDITH", english);
+        Assert.Contains("«Починил шар при речи»", russian);
+    }
 }

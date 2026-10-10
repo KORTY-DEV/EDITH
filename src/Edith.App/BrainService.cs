@@ -1097,7 +1097,10 @@ kill_process {"pid"}, move_file {"source","destination"}, rename_file {"path","n
 
         return await loop.RunAsync(
             BuildMessages(userText, backgroundResearch, personaPrompt, profile, nativeTools),
-            nativeTools ? BrainToolCatalog.For(gameActive) : [],
+            // "Покажи ...": the search names the thing, the picture tool shows it; reading whole pages (often closed or slow) is not needed.
+            nativeTools
+                ? BrainToolCatalog.For(gameActive).Where(t => !(BrainToolRouter.WantsPicture(userText) && t.Name == "read_web_page")).ToList()
+                : [],
             new AgentOptions { MaxSteps = Math.Max(1, settings.MaxToolSteps) },
             cancellationToken);
     }
@@ -1130,7 +1133,8 @@ kill_process {"pid"}, move_file {"source","destination"}, rename_file {"path","n
 
             AgentResult result = await loop.RunAsync(
                 BuildMessages(userText, backgroundResearch, personaPrompt, profile, nativeTools: true),
-                BrainToolCatalog.For(gameActive),
+                // "Покажи ...": the search names the thing, the picture tool shows it; reading whole pages (often closed or slow) is not needed.
+                BrainToolCatalog.For(gameActive).Where(t => !(BrainToolRouter.WantsPicture(userText) && t.Name == "read_web_page")).ToList(),
                 // The cloud has room for longer web errands and for the element list of a page.
                 new AgentOptions { MaxSteps = Math.Max(8, settings.MaxToolSteps), MaxToolResultChars = 3800 },
                 cancellationToken);

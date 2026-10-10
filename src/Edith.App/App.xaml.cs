@@ -1704,7 +1704,9 @@ public partial class App : Application
             return;
         }
 
-        Volatile.Write(ref _scanFloor, Interlocked.Read(ref _totalSamples));
+        // The scan hears only what comes AFTER the command, and not at once: the first two seconds are the owner's own phrase
+        // ("Эдит, покажи ...") still settling in the buffer; it once cancelled the command it had just started.
+        Volatile.Write(ref _scanFloor, Interlocked.Read(ref _totalSamples) + 16000 * 2);
         _voiceMode =
             VoiceMode.Busy;
 

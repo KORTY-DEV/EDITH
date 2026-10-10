@@ -102,7 +102,7 @@ public static class PulseBuilder
         {
             parts.Add("Над проектами " + string.Join(" и ", worked.Select(r => r.Name)) + " вы работали " +
                 (DaysSince(worked[0].LastCommit!.Value, now) == 0 ? "сегодня" : "вчера") +
-                $", последнее: «{Clip(worked[0].LastSubject, 70)}»");
+                (MostlyRussian(worked[0].LastSubject) ? $", последнее: «{Clip(worked[0].LastSubject, 70)}»" : ""));
         }
 
         DateTimeOffset yesterday = now.AddDays(-1);
@@ -229,6 +229,14 @@ public static class PulseBuilder
         }
 
         return parts.Count == 0 ? "" : "За прошедшую неделю: " + string.Join("; ", parts) + ".";
+    }
+
+    /// <summary>A commit subject in English would be read aloud letter by letter: say it only when it is Russian.</summary>
+    public static bool MostlyRussian(string text)
+    {
+        int cyrillic = text.Count(c => c is >= 'А' and <= 'я' or 'ё' or 'Ё');
+        int latin = text.Count(c => c is >= 'A' and <= 'Z' or >= 'a' and <= 'z');
+        return cyrillic > 0 && cyrillic >= latin;
     }
 
     public static int DaysSince(DateTimeOffset at, DateTimeOffset now) => Math.Max(0, (now.Date - at.Date).Days);
