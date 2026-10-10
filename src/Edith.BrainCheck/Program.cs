@@ -181,6 +181,59 @@ internal static class Program
             return 0;
         }
 
+        // --answer-shot DIR [query]: the real answer window with a really found picture, rendered to a PNG; prints the picture's rendered size.
+        if (args.Contains("--answer-shot"))
+        {
+            string[] tail = args.SkipWhile(a => a != "--answer-shot").Skip(1).ToArray();
+            string dir = tail[0];
+            string query = tail.Length > 1 ? tail[1] : "Mount Everest";
+            Directory.CreateDirectory(dir);
+            (byte[]? bytes, string caption, string reason) = Edith.App.AnswerImages.FindAsync(query, CancellationToken.None).GetAwaiter().GetResult();
+            Console.WriteLine(bytes is null ? "NO IMAGE: " + reason : $"found {bytes.Length} bytes, caption: {caption}");
+            if (bytes is null)
+                return 1;
+
+            int code = 1;
+            var thread = new Thread(() =>
+            {
+                var window = new Edith.App.AnswerWindow { Left = -10000, Top = -10000 };
+                window.ShowAnswer("Покажи " + query, "Вот, сэр.");
+                window.ShowImage(bytes, caption);
+                window.Show();
+                var frame = new System.Windows.Threading.DispatcherFrame();
+                var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1800) };
+                timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+                timer.Start();
+                System.Windows.Threading.Dispatcher.PushFrame(frame);
+
+                var root = (System.Windows.FrameworkElement)window.Content;
+                int w = (int)Math.Ceiling(root.ActualWidth), h = (int)Math.Ceiling(root.ActualHeight);
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(w, h, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                bitmap.Render(root);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                string file = Path.Combine(dir, "answer-image.png");
+                using (FileStream stream = File.Create(file))
+                    encoder.Save(stream);
+
+                // Count the pixels that are not the card's own dark background: a picture makes the card tall and colourful.
+                var pixels = new byte[w * h * 4];
+                bitmap.CopyPixels(pixels, w * 4, 0);
+                int colourful = 0;
+                for (int i = 0; i < pixels.Length; i += 4)
+                    if (pixels[i + 3] > 200 && Math.Max(pixels[i], Math.Max(pixels[i + 1], pixels[i + 2])) - Math.Min(pixels[i], Math.Min(pixels[i + 1], pixels[i + 2])) > 40)
+                        colourful++;
+                Console.WriteLine($"card {w}x{h}, colourful pixels {colourful} ({colourful * 100.0 / (w * h):0.0}%), saved {file}");
+                code = h > 200 && colourful > w * h / 20 ? 0 : 2;
+                window.Close();
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            thread.Join();
+            Console.WriteLine(code == 0 ? "PASS: the picture is drawn in the answer window" : "FAIL: no picture in the rendered card");
+            return code;
+        }
+
         // --digest PATH / --pcscan: what the librarian reads on the machine (read-only), printed.
         if (args.Contains("--digest"))
         {

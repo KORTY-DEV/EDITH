@@ -1018,8 +1018,8 @@ public partial class App : Application
                 // Only sound recorded after the command ended: the user's own "Эдит, открой…" is
                 // still in the last seconds and must not cancel the command it started.
                 long total = Interlocked.Read(ref _totalSamples);
-                int available = (int)Math.Min(16000 * 3, total - Volatile.Read(ref _scanFloor));
-                if (available < 16000 / 2)
+                int available = Edith.Core.BargeScanWindow.Available(total, Volatile.Read(ref _scanFloor));
+                if (available == 0)
                     return;
 
                 float[] audio = (_echo is not null ? _cleanAudio : _recentAudio).Last(available);
@@ -1706,7 +1706,7 @@ public partial class App : Application
 
         // The scan hears only what comes AFTER the command, and not at once: the first two seconds are the owner's own phrase
         // ("Эдит, покажи ...") still settling in the buffer; it once cancelled the command it had just started.
-        Volatile.Write(ref _scanFloor, Interlocked.Read(ref _totalSamples) + 16000 * 2);
+        Volatile.Write(ref _scanFloor, Edith.Core.BargeScanWindow.FloorAfterCommand(Interlocked.Read(ref _totalSamples)));
         _voiceMode =
             VoiceMode.Busy;
 

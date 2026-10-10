@@ -102,6 +102,10 @@ public sealed class VaultNotes
                 {
                 }
             }
+            catch (ObjectDisposedException)
+            {
+                // The app is closing: the rest is counted at the next start.
+            }
             catch (Exception ex)
             {
                 Edith.Core.Runtime.EdithEvents.Publish(Edith.Core.Runtime.EventKinds.Error, "Заметки: не посчитались векторы: " + ex.Message + " @ " + (ex.StackTrace ?? "").Split((char)10).FirstOrDefault()?.Trim());

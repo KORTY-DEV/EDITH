@@ -67,6 +67,7 @@ public sealed class E5Embedder : ITextEmbedder, IDisposable
         float[] hidden;
         lock (_gate)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             using var results = _session.Run(
             [
                 NamedOnnxValue.CreateFromTensor("input_ids", inputIds),
@@ -95,5 +96,17 @@ public sealed class E5Embedder : ITextEmbedder, IDisposable
         return vector;
     }
 
-    public void Dispose() => _session.Dispose();
+    private bool _disposed;
+
+    /// <summary>Waits for a running inference, so closing the app mid-batch cannot pull the session from under it.</summary>
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            _session.Dispose();
+        }
+    }
 }
