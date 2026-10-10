@@ -1,0 +1,7 @@
+# Окружение голоса EDITH (Silero v5 + автоматические ударения), только процессор.
+# Ставится скриптом scripts\Install-Models.ps1 в C:\EDITH\data\tts-venv (Python 3.11-3.13).
+torch
+numpy
+scipy
+onnxruntime
+ruaccent==1.5.8.3

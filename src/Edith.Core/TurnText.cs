@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace Edith.Core;
 
@@ -29,6 +29,10 @@ public static class TurnText
             return false;
 
         string last = words[^1];
+        // A lone "да" is an answer ("Хотите услышать продолжение?" — "да"), not the start of "да и ...".
+        if (words.Length == 1 && last == "да")
+            return false;
+
         // "ещё" ends a phrase as often as it opens one ("давай ещё"): only the clear cases count.
         return last != "еще" && last != "ну" && Dangling.Contains(last);
     }

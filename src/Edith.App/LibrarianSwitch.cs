@@ -8,9 +8,13 @@ namespace Edith.App;
 /// </summary>
 public static class LibrarianSwitch
 {
-    private static readonly string File_ = @"C:\EDITH\data\library\switch.txt";
+    /// <summary>Where the switch is remembered (settable for tests).</summary>
+    public static string StorePath { get; set; } = @"C:\EDITH\data\library\switch.txt";
 
     public static bool On { get; private set; } = Read();
+
+    /// <summary>Reads the remembered value again (tests; or after another process changed the file).</summary>
+    public static void Reload() => On = Read();
 
     public static event Action<bool>? Changed;
 
@@ -19,8 +23,8 @@ public static class LibrarianSwitch
         On = on;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(File_)!);
-            File.WriteAllText(File_, on ? "on" : "off");
+            Directory.CreateDirectory(Path.GetDirectoryName(StorePath)!);
+            File.WriteAllText(StorePath, on ? "on" : "off");
         }
         catch
         {
@@ -31,7 +35,7 @@ public static class LibrarianSwitch
 
     private static bool Read()
     {
-        try { return File.ReadAllText(File_).Trim() == "on"; } catch { return false; }
+        try { return File.ReadAllText(StorePath).Trim() == "on"; } catch { return false; }
     }
 
     public static bool TryHandle(string command, out string reply)

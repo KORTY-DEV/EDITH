@@ -17,7 +17,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 
 # Words that must not appear anywhere in the published tree (the pattern is assembled so this file does not match itself).
-$forbidden = @('cla' + 'ude', 'anthr' + 'opic', 'cod' + 'ex', 'Co-Authored', 'korty-news', 'C:\Users\korty')
+$forbidden = @('cla' + 'ude', 'anthr' + 'opic', 'cod' + 'ex', 'Co-Auth' + 'ored', 'korty-' + 'news', 'C:\Users\' + 'korty')
 $secretPatterns = @('sk-[A-Za-z0-9]{20,}', 'Basic [A-Za-z0-9+/=]{30,}', '(?i)api[_-]?key\s*[:=]\s*["''][A-Za-z0-9]{16,}', 'ghp_[A-Za-z0-9]{20,}')
 
 if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }

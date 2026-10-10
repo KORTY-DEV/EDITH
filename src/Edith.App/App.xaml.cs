@@ -171,6 +171,10 @@ public partial class App : Application
     protected override void OnStartup(
         StartupEventArgs e)
     {
+        // Software rendering: a transparent window on the hardware path reads the picture back from the video card, and
+        // under a game's load that read-back stalls (the orb crawled at 5-10 frames a second). The orb is small and cheap.
+        System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
+
         base.OnStartup(e);
 
         // One EDITH at a time: a second start (shortcut clicked again) only opens the panel
@@ -239,6 +243,7 @@ public partial class App : Application
         _overlay.ManualDeactivationRequested += EndManualActivation;
         _overlay.StatusPanelRequested += ToggleStatusPanel;
         _overlay.TextBarRequested += ShowTextBar;
+        Edith.Speech.WavPlayer.LevelChanged += level => _overlay?.SetOutputLevel(level);
         _ = Answers(); // created hidden now: pictures from tools can arrive before the first answer
 
         _tray = new TrayIcon(
@@ -2467,23 +2472,20 @@ public partial class App : Application
         if (_runtime is null)
             return;
 
-        _statusWindow ??= new StatusWindow(_runtime, _response?.Memory as Edith.Core.Memory.SqliteMemoryStore);
+        _statusWindow ??= new StatusWindow(_runtime, _response?.Memory as Edith.Core.Memory.SqliteMemoryStore, Restart);
         _statusWindow.Show();
         _statusWindow.Activate();
     }
 
 
+    /// <summary>One interface: settings are a tab of the main window.</summary>
     private void ShowSettings()
     {
-        if (_settingsWindow is { IsVisible: true })
-        {
-            _settingsWindow.Activate();
+        if (_runtime is null)
             return;
-        }
 
-        _settingsWindow = new SettingsWindow(Restart);
-        _settingsWindow.Show();
-        _settingsWindow.Activate();
+        ShowStatusPanel();
+        _statusWindow?.Open("Настройки");
     }
 
 

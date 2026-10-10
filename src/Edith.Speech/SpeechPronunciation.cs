@@ -59,10 +59,10 @@ public static class SpeechPronunciation
     /// </summary>
     public static string Pauses(string text)
     {
-        text = Regex.Replace(text, @"(?<![\p{L}])(Хм+|Ну|Так|Слушайте|Знаете|Итак|Видите ли|Кстати|Впрочем)(,?)\s+", m => m.Groups[1].Value + ",<break time=\"260ms\"/> ", RegexOptions.IgnoreCase);
-        text = Regex.Replace(text, @"(?<=\p{L}),(?!<)\s+", ",<break time=\"140ms\"/> ");
-        text = Regex.Replace(text, @"\s+[—–]\s+", " —<break time=\"220ms\"/> ");
-        text = Regex.Replace(text, @"(?<=\p{L}):\s+", ":<break time=\"200ms\"/> ");
+        // Silero already breathes at every comma: extra pauses there made speech jerky. Only what it does not do by itself.
+        text = Regex.Replace(text, @"(?<![\p{L}])(Хм+|Ну|Так|Слушайте|Знаете|Итак|Видите ли|Кстати|Впрочем)(,?)\s+", m => m.Groups[1].Value + ",<break time=\"180ms\"/> ", RegexOptions.IgnoreCase);
+        text = Regex.Replace(text, @"\s+[—–-]\s+", " —<break time=\"140ms\"/> ");
+        text = Regex.Replace(text, @"(?<=\p{L}):\s+", ":<break time=\"120ms\"/> ");
         text = Regex.Replace(text, @"(?:\.{3}|…)\s*", "…<break time=\"420ms\"/> ");
         return text;
     }

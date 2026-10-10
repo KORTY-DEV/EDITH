@@ -33,7 +33,6 @@ public sealed class SettingsWindow : Window
         ("Ксения (xenia) — основной", "xenia"),
         ("Ксения 2 (kseniya)", "kseniya"),
         ("Бая (baya)", "baya"),
-        ("Айдар (aidar) — мужской", "aidar"),
         ("Евгений (eugene) — мужской", "eugene"),
     ];
 
@@ -58,12 +57,16 @@ public sealed class SettingsWindow : Window
     private readonly Slider _silence = new() { Minimum = 350, Maximum = 1500, TickFrequency = 50, IsSnapToTickEnabled = true };
     private readonly CheckBox _smartTurn = new() { Content = "Умно понимать, что я договорил (Smart Turn)", Foreground = Foreground0 };
     private bool _smartTurnLoaded;
+    private bool _windowLoaded, _quietLoaded, _librarianLoaded;
     private readonly TextBlock _silenceValue = Label("", Muted);
     private readonly ComboBox _keepAlive = new();
     private readonly CheckBox _autostart = new() { Content = "Запускать EDITH вместе с Windows", Foreground = Foreground0 };
     private readonly CheckBox _answerWindow = new() { Content = "Показывать ответы в окне на экране", Foreground = Foreground0 };
     private readonly CheckBox _quiet = new() { Content = "Тихий режим: не говорить вслух, только писать", Foreground = Foreground0 };
     private readonly CheckBox _librarian = new() { Content = "Библиотекарь: вести архив в Obsidian (когда я не занята и нет игры)", Foreground = Foreground0 };
+    private readonly PasswordBox _gigaKey = new() { PasswordChar = (char)8226 };
+    private readonly TextBlock _gigaState = new() { FontSize = 12, Foreground = Muted, Margin = new Thickness(0, 2, 0, 0) };
+    private readonly CheckBox _cloud = new() { Content = "Использовать облако (GigaChat) для ответов", Foreground = Foreground0 };
     private readonly CheckBox _gaming = new() { Content = "Уступать видеокарту играм (игровой режим)", Foreground = Foreground0 };
     private readonly TextBlock _status = Label("", Accent);
 
@@ -102,9 +105,19 @@ public sealed class SettingsWindow : Window
         root.Children.Add(Pad(_quiet));
         root.Children.Add(Pad(_librarian));
         var models = new Button { Content = "Модели: выбрать и скачать…", Margin = new Thickness(0, 6, 0, 2), Padding = new Thickness(10, 4, 10, 4), HorizontalAlignment = HorizontalAlignment.Left };
-        models.Click += (_, _) => new ModelsWindow().Show();
+        models.Click += (_, _) => StatusWindow.OpenTabRequested?.Invoke("Модели");
         root.Children.Add(models);
         root.Children.Add(Hint("Применяется сразу. Окно можно двигать и растягивать за уголок; голосом: «убери окно», «покажи окно», «тихий режим»."));
+
+        root.Children.Add(Section("GigaChat (облако)"));
+        root.Children.Add(Pad(_cloud));
+        root.Children.Add(Field("Ключ авторизации GigaChat", _gigaKey));
+        root.Children.Add(_gigaState);
+        var gigaButtons = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
+        gigaButtons.Children.Add(Button("Сохранить ключ", SaveGigaKey, primary: true));
+        gigaButtons.Children.Add(LinkButton("Как получить бесплатный ключ", () => OpenFile(@"C:\EDITH\docs\GIGACHAT.md")));
+        root.Children.Add(gigaButtons);
+        root.Children.Add(Hint("Бесплатная квота Сбера для физлиц очень большая; без ключа EDITH думает локальной моделью. Ключ хранится зашифрованным средствами Windows."));
 
         root.Children.Add(Section("Общение"));
         root.Children.Add(Field("Как ко мне обращаться", _address));
@@ -114,8 +127,16 @@ public sealed class SettingsWindow : Window
         root.Children.Add(Field("Голос", _voice));
         var listen = new Button { Content = "▶ Прослушать (целая фраза)", Margin = new Thickness(0, 4, 0, 4), Padding = new Thickness(10, 4, 10, 4), HorizontalAlignment = HorizontalAlignment.Left };
         var player = new Edith.Speech.WavPlayer();
+        CancellationTokenSource? playing = null;
         listen.Click += async (_, _) =>
         {
+            // A second click while the sample plays silences it: a voice that does not please is stopped at once.
+            if (playing is not null)
+            {
+                playing.Cancel();
+                return;
+            }
+
             string voice = Voices[Math.Max(0, _voice.SelectedIndex)].Value;
             string? file = Directory.Exists(@"C:\EDITH\data\voice-samples")
                 ? Directory.GetFiles(@"C:\EDITH\data\voice-samples", voice + "-*.wav").OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault()
@@ -126,9 +147,10 @@ public sealed class SettingsWindow : Window
                 return;
             }
 
-            listen.IsEnabled = false;
-            try { await player.PlayAsync(file, CancellationToken.None); } catch { }
-            listen.IsEnabled = true;
+            playing = new CancellationTokenSource();
+            listen.Content = "■ Остановить";
+            try { await player.PlayAsync(file, playing.Token); } catch { }
+            playing = null;
             listen.Content = "▶ Прослушать (целая фраза)";
         };
         root.Children.Add(listen);
@@ -172,7 +194,7 @@ public sealed class SettingsWindow : Window
         string persona = Read(PersonaPath), tts = Read(TtsPath), wake = Read(WakePath),
             conversation = Read(ConversationPath), brain = Read(BrainPath);
 
-        _address.Text = ConfigText.Get(persona, "defaultAddress") ?? "сэр";
+        _address.Text = _loadedAddress = ConfigText.Get(persona, "defaultAddress") ?? "сэр";
 
         _loadedVoice = ConfigText.Get(tts, "localVoice") ?? "xenia";
         _voice.SelectedIndex = Math.Max(0, Array.FindIndex(Voices, v => v.Value == _loadedVoice));
@@ -192,44 +214,95 @@ public sealed class SettingsWindow : Window
         string keepAlive = ConfigText.Get(brain, "normal.keepAlive") ?? "3h";
         _keepAlive.SelectedIndex = Array.FindIndex(KeepAliveOptions, k => k.Value == keepAlive) is var ki and >= 0 ? ki : 2;
 
-        _gaming.IsChecked = ConfigText.Get(brain, "gaming.enabled") != "false";
-        _autostart.IsChecked = Autostart.IsEnabled;
-        _answerWindow.IsChecked = UiModes.WindowOn;
-        _quiet.IsChecked = UiModes.Quiet;
-        _librarian.IsChecked = LibrarianSwitch.On;
+        _loadedKeepAlive = KeepAliveOptions[_keepAlive.SelectedIndex].Value;
+        _gaming.IsChecked = _loadedGaming = ConfigText.Get(brain, "gaming.enabled") != "false";
+        _autostart.IsChecked = _loadedAutostart = Autostart.IsEnabled;
+        _cloud.IsChecked = _loadedCloud = ConfigText.Get(Read(@"C:\EDITH\config\cloud.json"), "enabled") == "true";
+        UpdateGigaState();
+        _answerWindow.IsChecked = _windowLoaded = UiModes.WindowOn;
+        _quiet.IsChecked = _quietLoaded = UiModes.Quiet;
+        _librarian.IsChecked = _librarianLoaded = LibrarianSwitch.On;
+
+        // The tray (or a voice command) may flip these while this tab is open: follow it, so a later Save cannot undo it.
+        LibrarianSwitch.Changed += on => Dispatcher.BeginInvoke(() => _librarian.IsChecked = _librarianLoaded = on);
     }
+
+    /// <summary>The values the window showed when it was filled (or last saved): Save writes only what the owner changed since.</summary>
+    private string _loadedAddress = "", _loadedKeepAlive = "";
+    private bool _loadedGaming, _loadedCloud, _loadedAutostart;
 
     private void Save(bool restartAfter)
     {
         try
         {
-            Update(PersonaPath, t => ConfigText.Set(t, "defaultAddress", string.IsNullOrWhiteSpace(_address.Text) ? "сэр" : _address.Text.Trim()));
-            Update(TtsPath, t => ConfigText.Set(t, "localVoice", Voices[Math.Max(0, _voice.SelectedIndex)].Value));
+            // Only what was really changed is written: a window that shows a stale snapshot, or a default for a missing key,
+            // must never overwrite a setting the owner did not touch (it once turned Smart Turn off by itself).
+            string address = string.IsNullOrWhiteSpace(_address.Text) ? "сэр" : _address.Text.Trim();
+            if (address != _loadedAddress)
+                Update(PersonaPath, t => ConfigText.Set(t, "defaultAddress", address));
+
+            string voice = Voices[Math.Max(0, _voice.SelectedIndex)].Value;
+            if (voice != _loadedVoice)
+                Update(TtsPath, t => ConfigText.Set(t, "localVoice", voice));
+
             int rate = Rates[Math.Max(0, _rate.SelectedIndex)];
-            Update(TtsPath, t => ConfigText.Get(t, "localRatePercent") is null
-                ? t.Replace("\"localVoice\"", "\"localRatePercent\": " + rate + ",\n    \"localVoice\"")
-                : ConfigText.Set(t, "localRatePercent", rate));
+            if (rate != _loadedRate)
+            {
+                Update(TtsPath, t => ConfigText.Get(t, "localRatePercent") is null
+                    ? t.Replace("\"localVoice\"", "\"localRatePercent\": " + rate + ",\n    \"localVoice\"")
+                    : ConfigText.Set(t, "localRatePercent", rate));
+            }
 
             double threshold = WakeLevels[Math.Max(0, _wake.SelectedIndex)].Threshold;
-            Update(WakePath, t => ConfigText.Set(ConfigText.Set(t, "threshold", threshold), "verifierThreshold", threshold));
+            if (_wake.SelectedIndex.ToString() != _loadedWake)
+                Update(WakePath, t => ConfigText.Set(ConfigText.Set(t, "threshold", threshold), "verifierThreshold", threshold));
+
             bool smart = _smartTurn.IsChecked == true;
-            Update(ConversationPath, t => ConfigText.Set(ConfigText.Set(t, "smartTurn", smart), SilenceKey(smart), (int)_silence.Value));
-            Update(BrainPath, t => ConfigText.Set(
-                ConfigText.Set(t, "normal.keepAlive", KeepAliveOptions[Math.Max(0, _keepAlive.SelectedIndex)].Value),
-                "gaming.enabled", _gaming.IsChecked == true));
+            string silence = _silence.Value.ToString("0");
+            if (smart != _smartTurnLoaded || silence != _loadedSilence)
+                Update(ConversationPath, t => ConfigText.Set(ConfigText.Set(t, "smartTurn", smart), SilenceKey(smart), (int)_silence.Value));
 
-            UiModes.Set(_answerWindow.IsChecked == true, _quiet.IsChecked == true);
-            if ((_librarian.IsChecked == true) != LibrarianSwitch.On)
-                LibrarianSwitch.Set(_librarian.IsChecked == true);
+            string keepAlive = KeepAliveOptions[Math.Max(0, _keepAlive.SelectedIndex)].Value;
+            bool gaming = _gaming.IsChecked == true;
+            if (keepAlive != _loadedKeepAlive || gaming != _loadedGaming)
+                Update(BrainPath, t => ConfigText.Set(ConfigText.Set(t, "normal.keepAlive", keepAlive), "gaming.enabled", gaming));
 
-            if ((_autostart.IsChecked == true) != Autostart.IsEnabled)
-                Autostart.Set(_autostart.IsChecked == true);
+            UiModes.Set(
+                SettingSync.Resolve(UiModes.WindowOn, _windowLoaded, _answerWindow.IsChecked == true),
+                SettingSync.Resolve(UiModes.Quiet, _quietLoaded, _quiet.IsChecked == true));
+            _windowLoaded = UiModes.WindowOn;
+            _quietLoaded = UiModes.Quiet;
+            _answerWindow.IsChecked = UiModes.WindowOn;
+            _quiet.IsChecked = UiModes.Quiet;
 
-            bool needsRestart = Voices[Math.Max(0, _voice.SelectedIndex)].Value != _loadedVoice ||
-                                rate != _loadedRate ||
+            bool cloud = _cloud.IsChecked == true;
+            if (cloud != _loadedCloud)
+                Update(@"C:\EDITH\config\cloud.json", t => ConfigText.Set(t, "enabled", cloud));
+
+            bool librarianWanted = SettingSync.Resolve(LibrarianSwitch.On, _librarianLoaded, _librarian.IsChecked == true);
+            if (librarianWanted != LibrarianSwitch.On)
+                LibrarianSwitch.Set(librarianWanted);
+            _librarianLoaded = LibrarianSwitch.On;
+
+            bool autostart = _autostart.IsChecked == true;
+            if (autostart != _loadedAutostart && autostart != Autostart.IsEnabled)
+                Autostart.Set(autostart);
+
+            bool needsRestart = voice != _loadedVoice || rate != _loadedRate ||
                                 _wake.SelectedIndex.ToString() != _loadedWake ||
-                                _silence.Value.ToString("0") != _loadedSilence ||
-                                (_smartTurn.IsChecked == true) != _smartTurnLoaded;
+                                silence != _loadedSilence || smart != _smartTurnLoaded;
+
+            // What was just saved is the new snapshot.
+            _loadedAddress = address;
+            _loadedVoice = voice;
+            _loadedRate = rate;
+            _loadedWake = _wake.SelectedIndex.ToString();
+            _smartTurnLoaded = smart;
+            _loadedSilence = silence;
+            _loadedKeepAlive = keepAlive;
+            _loadedGaming = gaming;
+            _loadedCloud = cloud;
+            _loadedAutostart = autostart;
 
             EdithEvents.Publish(EventKinds.SettingsChanged, "Настройки сохранены");
             if (restartAfter)
@@ -252,6 +325,36 @@ public sealed class SettingsWindow : Window
 
     private static string Read(string path) =>
         File.Exists(path) ? File.ReadAllText(path) : "";
+
+
+    private const string GigaKeyPath = @"C:\EDITH\secrets\gigachat-auth-key.txt";
+
+    private void UpdateGigaState() =>
+        _gigaState.Text = Edith.Speech.LocalSecrets.Exists(GigaKeyPath) ? "Ключ сохранён (зашифрован). Новый можно вставить поверх." : "Ключа нет: облако не работает, EDITH думает локальной моделью.";
+
+    private void SaveGigaKey()
+    {
+        string key = _gigaKey.Password.Trim();
+        if (key.Length < 20)
+        {
+            _gigaState.Text = "Это не похоже на ключ авторизации: он длинный (десятки символов).";
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(GigaKeyPath)!);
+            Edith.Speech.LocalSecrets.WriteProtected(GigaKeyPath, key);
+            _gigaKey.Clear();
+            _cloud.IsChecked = true;
+            Update(@"C:\EDITH\config\cloud.json", t => ConfigText.Set(t, "enabled", true));
+            UpdateGigaState();
+        }
+        catch (Exception ex)
+        {
+            _gigaState.Text = "Не удалось сохранить: " + ex.Message;
+        }
+    }
 
     private static void Update(string path, Func<string, string> change)
     {

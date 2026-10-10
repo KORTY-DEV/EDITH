@@ -44,3 +44,6 @@ __pycache__/
 /app/
 /docs/*.pdf
 /config/apps.json
+
+/dist/
+/ULEY_University_Guide_*.pdf

@@ -1,4 +1,4 @@
-using NAudio.Wave;
+﻿using NAudio.Wave;
 
 namespace Edith.Speech;
 
@@ -10,6 +10,12 @@ public sealed class WavPlayer
 {
     private readonly object _gate = new();
     private WaveOutEvent? _output;
+
+    /// <summary>
+    /// Loudness of what is being played (0..1, about 20 times a second; 0 when playback ends): the orb moves with her voice.
+    /// Raised on the playback thread.
+    /// </summary>
+    public static event Action<float>? LevelChanged;
 
     /// <summary>Returns when the file has played to the end; throws <see cref="OperationCanceledException"/> when stopped.</summary>
     public async Task PlayAsync(string file, CancellationToken cancellationToken)
@@ -27,7 +33,10 @@ public sealed class WavPlayer
                 finished.TrySetResult();
         };
 
-        output.Init(reader);
+        // A meter between the file and the speakers: it only measures, the sound is not changed.
+        var meter = new NAudio.Wave.SampleProviders.MeteringSampleProvider(reader, Math.Max(1, reader.WaveFormat.SampleRate / 20));
+        meter.StreamVolume += (_, e) => LevelChanged?.Invoke(e.MaxSampleValues.Length == 0 ? 0 : e.MaxSampleValues.Max());
+        output.Init(meter);
         lock (_gate)
             _output = output;
 
@@ -44,6 +53,8 @@ public sealed class WavPlayer
                 if (ReferenceEquals(_output, output))
                     _output = null;
             }
+
+            LevelChanged?.Invoke(0);
         }
 
         cancellationToken.ThrowIfCancellationRequested();

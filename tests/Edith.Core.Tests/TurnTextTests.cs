@@ -1,4 +1,4 @@
-using Edith.Core;
+﻿using Edith.Core;
 
 namespace Edith.Core.Tests;
 
@@ -15,6 +15,8 @@ public sealed class TurnTextTests
     [InlineData("что делаешь", false)]
     [InlineData("спасибо", false)]
     [InlineData("давай ещё", false)]
+    [InlineData("да", false)]
+    [InlineData("да и", true)]
     [InlineData("", false)]
     public void Detects(string text, bool midSentence) =>
         Assert.Equal(midSentence, TurnText.EndsMidSentence(text));

@@ -52,7 +52,7 @@ function Stop-Edith {
 # EDITH's own Ollama server (port 11435) may sit in the app folder (older builds started it there):
 # stop it so the folder can be replaced; EDITH starts it again on the first question.
 function Stop-OwnOllama {
-    $own = Get-NetTCPConnection -State Listen -LocalPort 11435 -ErrorAction SilentlyContinue |
+    $own = Get-NetTCPConnection -State Listen -LocalPort 11435,11436 -ErrorAction SilentlyContinue |
         Select-Object -ExpandProperty OwningProcess -Unique
     foreach ($id in $own) {
         $p = Get-Process -Id $id -ErrorAction SilentlyContinue
@@ -104,8 +104,19 @@ else {
     Stop-OwnOllama
 
     if (Test-Path $previous) { Remove-Item -Recurse -Force $previous }
-    if (Test-Path $current) { Rename-Item $current 'previous' }
-    Rename-Item $next 'current'
+    try {
+        if (Test-Path $current) { Rename-Item $current 'previous' -ErrorAction Stop }
+        Rename-Item $next 'current'
+    }
+    catch {
+        # Some process keeps the folder itself open (its working directory): replace the contents instead of renaming.
+        Write-Host '   папка занята другим процессом — заменяю содержимое'
+        New-Item -ItemType Directory -Force $previous | Out-Null
+        robocopy $current $previous /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+        robocopy $next $current /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -ge 8) { throw 'не удалось скопировать новую версию' }
+        Remove-Item -Recurse -Force $next
+    }
     Write-Host "== установлено в $current"
 }
 
@@ -129,7 +140,7 @@ elseif ($NoAutostart -and (Test-Path $startupLink)) {
 
 # Сторож: раз в минуту проверяет, не упала ли EDITH (не закрыта, а именно упала), и поднимает её снова.
 if ($Watchdog) {
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "C:\EDITH\scripts\Edith-Watchdog.ps1"'
+    $action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument '//B //Nologo "C:\EDITH\scripts\Edith-Watchdog.vbs"'
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 2)
     Register-ScheduledTask -TaskName 'EDITH-Watchdog' -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null

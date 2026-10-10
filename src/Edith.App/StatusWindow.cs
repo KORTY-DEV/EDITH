@@ -39,6 +39,8 @@ public sealed class StatusWindow : Window
     private readonly StackPanel _health = new();
     private readonly StackPanel _cards = new();
     private readonly StackPanel _services = new();
+    private readonly StackPanel _todo = new();
+    private Border? _todoCard;
     private readonly System.Windows.Threading.DispatcherTimer _servicesTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly StackPanel _facts = new();
     private readonly StackPanel _talks = new();
@@ -46,15 +48,22 @@ public sealed class StatusWindow : Window
     private readonly List<(Border Tab, UIElement Page)> _tabs = [];
     private bool _closing;
 
-    public StatusWindow(EdithRuntime runtime, Edith.Core.Memory.SqliteMemoryStore? memory = null)
+    /// <summary>Lets other windows ask the main window to open a tab ("Модели", "Настройки"...).</summary>
+    public static Action<string>? OpenTabRequested { get; set; }
+
+    private readonly Dictionary<Border, Action<Border>> _firstShow = [];
+    private readonly Dictionary<Border, string> _names = [];
+
+    public StatusWindow(EdithRuntime runtime, Edith.Core.Memory.SqliteMemoryStore? memory = null, Action? restart = null)
     {
+        OpenTabRequested = Open;
         _runtime = runtime;
         _memory = memory;
 
         Title = "E.D.I.T.H.";
         Theme.Apply(this);
-        Width = 600;
-        Height = 720;
+        Width = 640;
+        Height = 760;
         MinWidth = 420;
         MinHeight = 420;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -86,7 +95,8 @@ public sealed class StatusWindow : Window
         sub.Children.Add(_deferred);
 
         // Pages.
-        var now = Page(Card("Службы", _services), Card("Системы", _health));
+        _todoCard = Card("Что нужно настроить", _todo);
+        var now = Page(_todoCard, Card("Службы", _services), Card("Системы", _health));
         var notes = Page(Card("Что я заметила", _cards));
         var memoryPage = Page(Card("Что я о вас знаю", _facts), Card("Недавние разговоры", _talks));
         var events = new Border { Padding = new Thickness(14, 4, 14, 14), Child = _feed };
@@ -117,6 +127,31 @@ public sealed class StatusWindow : Window
         AddTab("Заметки", notes);
         AddTab("Память", memoryPage);
         AddTab("События", events);
+
+        // One interface: models and settings live here too, built the first time their tab is opened.
+        void AddLazyTab(string name, Action<Border> build)
+        {
+            var host = new Border();
+            AddTab(name, host);
+            _firstShow[_tabs[^1].Tab] = build;
+        }
+
+        AddLazyTab("Модели", host =>
+        {
+            var models = new ModelsWindow();
+            host.Child = (UIElement)models.Content;
+            models.Content = null;
+            _ = models.InitAsync();
+        });
+        AddLazyTab("Настройки", host =>
+        {
+            var settings = new SettingsWindow(restart ?? (() => { }));
+            UIElement content = (UIElement)settings.Content;
+            settings.Content = null;
+            host.Child = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = new Border { Margin = new Thickness(4, 0, 4, 12), Child = content } };
+        });
+        foreach ((Border tab, _) in _tabs)
+            _names[tab] = ((TextBlock)tab.Child).Text;
         SelectTab(_tabs[0].Tab);
 
         var root = new DockPanel
@@ -153,8 +188,20 @@ public sealed class StatusWindow : Window
         };
     }
 
+    /// <summary>Shows the window on the named tab.</summary>
+    public void Open(string name)
+    {
+        Show();
+        Activate();
+        if (_names.FirstOrDefault(p => p.Value == name).Key is { } tab)
+            SelectTab(tab);
+    }
+
     private void SelectTab(Border selected)
     {
+        if (_firstShow.Remove(selected, out Action<Border>? build))
+            build((Border)_tabs.First(t => ReferenceEquals(t.Tab, selected)).Page);
+
         foreach ((Border tab, UIElement page) in _tabs)
         {
             bool on = ReferenceEquals(tab, selected);
@@ -290,6 +337,14 @@ public sealed class StatusWindow : Window
     /// <summary>Librarian, archive, pulse, watchdog and the answer window: what runs and what it has done.</summary>
     private void RefreshServices()
     {
+        // A fresh install: what is still missing, in plain words (hidden when everything is in place).
+        _todo.Children.Clear();
+        IReadOnlyList<string> problems = FirstRun.Problems();
+        foreach (string problem in problems)
+            _todo.Children.Add(new TextBlock { Text = "• " + problem, Foreground = Warn, FontSize = 13, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 4) });
+        if (_todoCard is not null)
+            _todoCard.Visibility = problems.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+
         _services.Children.Clear();
 
         bool libraryOn = LibrarianSwitch.On;

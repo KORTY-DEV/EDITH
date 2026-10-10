@@ -77,10 +77,9 @@ public sealed class SileroTtsService : IDisposable
     }
 
     public const string SampleText =
-        "Добрый вечер, сэр. Сегодня вы работали над проектом, а завтра — если хотите — я напомню о встрече. " +
-        "Как вам мой голос? Он звучит естественно, или лучше говорить помедленнее?";
+        "Добрый вечер, сэр. Сегодня вы работали над проектом, а завтра я напомню о встрече. Как вам мой голос?";
 
-    public static readonly string[] SampleVoices = ["xenia", "kseniya", "baya", "aidar", "eugene"];
+    public static readonly string[] SampleVoices = ["xenia", "kseniya", "baya", "eugene"];
 
     public string SamplePath(string voice) =>
         Path.Combine(@"C:\EDITH\data\voice-samples", $"{voice}-{_settings.LocalRatePercent}{(_settings.LocalPauses ? "p" : "")}.wav");

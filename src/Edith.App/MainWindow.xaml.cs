@@ -269,6 +269,9 @@ public partial class MainWindow : Window
     /// <summary>Microphone loudness for the listening orb (any thread).</summary>
     public void SetMicrophoneLevel(float level) => OrbView.Level = level;
 
+    /// <summary>Loudness of her own voice for the speaking orb (any thread).</summary>
+    public void SetOutputLevel(float level) => OrbView.OutputLevel = level;
+
     private static void WriteUiStateLog(
         string backendState,
         AssistantState uiState,

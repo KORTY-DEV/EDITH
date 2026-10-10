@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -72,7 +72,14 @@ public sealed class ModelsWindow : Window
         root.Children.Add(_status);
 
         Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = root };
-        Loaded += async (_, _) => { LoadConfig(); await RefreshAsync(); };
+        Loaded += async (_, _) => await InitAsync();
+    }
+
+    /// <summary>Fills the page (also when its content lives inside the main window instead of this one).</summary>
+    public async Task InitAsync()
+    {
+        LoadConfig();
+        await RefreshAsync();
     }
 
     private void LoadConfig()

@@ -143,6 +143,44 @@ internal static class Program
             return 0;
         }
 
+        // --ui-shot DIR: the settings and models pages rendered offscreen to pictures (for a visual audit).
+        if (args.Contains("--ui-shot"))
+        {
+            string dir = args.SkipWhile(a => a != "--ui-shot").Skip(1).First();
+            Directory.CreateDirectory(dir);
+            var thread = new Thread(() =>
+            {
+                void Shoot(string name, System.Windows.UIElement content, double width)
+                {
+                    var host = new System.Windows.Controls.Border { Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(17, 20, 28)), Child = content, Width = width };
+                    Edith.App.Theme.Apply(host);
+                    host.Measure(new System.Windows.Size(width, double.PositiveInfinity));
+                    host.Arrange(new System.Windows.Rect(0, 0, width, host.DesiredSize.Height));
+                    host.UpdateLayout();
+                    var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)width, (int)Math.Ceiling(host.DesiredSize.Height), 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                    bitmap.Render(host);
+                    var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                    encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                    using FileStream stream = File.Create(Path.Combine(dir, name));
+                    encoder.Save(stream);
+                    Console.WriteLine("saved " + name);
+                }
+
+                var settings = new Edith.App.SettingsWindow(() => { });
+                var settingsContent = (System.Windows.UIElement)settings.Content;
+                settings.Content = null;
+                Shoot("settings.png", settingsContent, 620);
+                var models = new Edith.App.ModelsWindow();
+                var modelsContent = (System.Windows.UIElement)models.Content;
+                models.Content = null;
+                Shoot("models.png", new System.Windows.Controls.ScrollViewer { Content = modelsContent, VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Disabled }, 620);
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            thread.Join();
+            return 0;
+        }
+
         // --digest PATH / --pcscan: what the librarian reads on the machine (read-only), printed.
         if (args.Contains("--digest"))
         {

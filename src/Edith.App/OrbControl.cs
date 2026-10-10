@@ -26,6 +26,9 @@ public sealed class OrbControl : FrameworkElement
     private AssistantState _state = AssistantState.Listening;
     private double _r = Cyan.R, _g = Cyan.G, _b = Cyan.B; // current colour, eased towards the state's
     private double _smoothLevel;
+    private double _phase;      // accumulated, so a change of speed bends the motion instead of jumping it
+    private double _peakIn = 0.03, _peakOut = 0.05; // running loudness peaks: the orb moves the same for a quiet mic and a loud one
+    private double _smoothOut;
     private volatile float _level;
     private double _burstStart = double.NegativeInfinity;
     private double _closeStart = double.NegativeInfinity;
@@ -42,11 +45,22 @@ public sealed class OrbControl : FrameworkElement
         SnapsToDevicePixels = false;
     }
 
+    private volatile float _outLevel;
+
     /// <summary>Microphone loudness 0..1 (thread-safe), shown while listening.</summary>
     public float Level
     {
         set => _level = value;
     }
+
+    /// <summary>Loudness of her own voice 0..1 (thread-safe), shown while speaking.</summary>
+    public float OutputLevel
+    {
+        set => _outLevel = value;
+    }
+
+    private int _framesDrawn;
+    private double _fpsSince;
 
     public void SetState(AssistantState state)
     {
@@ -92,7 +106,7 @@ public sealed class OrbControl : FrameworkElement
         // 30 frames a second are enough for a soft glow and half the cost of 60.
         if (e is RenderingEventArgs args)
         {
-            if (args.RenderingTime - _lastFrame < TimeSpan.FromMilliseconds(31))
+            if (args.RenderingTime - _lastFrame < TimeSpan.FromMilliseconds(14))
                 return;
             _lastFrame = args.RenderingTime;
         }
@@ -121,6 +135,24 @@ public sealed class OrbControl : FrameworkElement
 
     private void Draw(DrawingContext dc, double t)
     {
+        // Real frame rate, written now and then (data/diagnostics/orb-fps.txt) so a slow orb is a number, not a feeling.
+        _framesDrawn++;
+        if (_fpsSince == 0)
+            _fpsSince = t;
+        else if (t - _fpsSince >= 2.5)
+        {
+            try
+            {
+                System.IO.File.AppendAllText(@"C:\EDITH\data\diagnostics\orb-fps.txt", $"{DateTime.Now:HH:mm:ss} {_framesDrawn / (t - _fpsSince):F1} fps ({_state})" + Environment.NewLine);
+            }
+            catch
+            {
+            }
+
+            _framesDrawn = 0;
+            _fpsSince = t;
+        }
+
         double dt = Math.Clamp(t - _lastT, 0, 0.1);
         _lastT = t;
 
@@ -138,17 +170,20 @@ public sealed class OrbControl : FrameworkElement
         var color = Color.FromRgb((byte)_r, (byte)_g, (byte)_b);
 
         // Loudness is smoothed: fast up, slow down (like a level meter).
-        double level = Math.Clamp(_level * 3.2, 0, 1);
-        _smoothLevel += (level - _smoothLevel) * (level > _smoothLevel ? Math.Min(1, dt * 22) : Math.Min(1, dt * 5));
+        // Auto gain: speech sits near the recent peak whatever the microphone's volume; the noise floor stays low.
+        double rawIn = _level;
+        _peakIn = Math.Max(0.02, Math.Max(rawIn, _peakIn * Math.Exp(-dt * 0.35)));
+        double level = Math.Clamp(Math.Sqrt(Math.Max(0, rawIn - 0.004) / _peakIn), 0, 1);
+        _smoothLevel += (level - _smoothLevel) * (level > _smoothLevel ? Math.Min(1, dt * 16) : Math.Min(1, dt * 6));
 
         // How big the outline's wobble is, and how fast the orb breathes, per state.
         double wobble, breathe, rate;
         switch (_state)
         {
             case AssistantState.Listening:
-                wobble = 0.07 + 0.55 * _smoothLevel;
-                breathe = 0.04 * Math.Sin(t * 2.4);
-                rate = 1.0;
+                wobble = 0.06 + 0.42 * _smoothLevel;
+                breathe = 0.03 * Math.Sin(t * 2.4) + 0.05 * _smoothLevel;
+                rate = 1.0 + 0.8 * _smoothLevel;
                 break;
             case AssistantState.Thinking:
                 wobble = 0.09;
@@ -156,10 +191,15 @@ public sealed class OrbControl : FrameworkElement
                 rate = 1.8;
                 break;
             case AssistantState.Speaking:
-                double voice = 0.5 + 0.5 * Math.Sin(t * 7.3) * Math.Sin(t * 3.1 + 1.2) * Math.Sin(t * 1.3 + 0.4);
-                wobble = 0.12 + 0.36 * Math.Clamp(voice, 0, 1);
-                breathe = 0.05 * voice;
-                rate = 1.4;
+                // The real loudness of the voice, gently smoothed: the playback meter reports 20 times a second, and a
+                // fast follower made the orb shake. A calm swell with the words, never a jitter.
+                double rawOut = _outLevel;
+                _peakOut = Math.Max(0.05, Math.Max(rawOut, _peakOut * Math.Exp(-dt * 0.25)));
+                double voice = rawOut > 0.002f ? Math.Clamp(rawOut / _peakOut, 0, 1) : 0.30 + 0.10 * Math.Sin(t * 3.0);
+                _smoothOut += (voice - _smoothOut) * Math.Min(1, dt * (voice > _smoothOut ? 7 : 3.5));
+                wobble = 0.08 + 0.20 * _smoothOut;
+                breathe = 0.04 * _smoothOut;
+                rate = 1.0 + 0.35 * _smoothOut;
                 break;
             case AssistantState.Warning:
                 wobble = 0.1;
@@ -172,6 +212,8 @@ public sealed class OrbControl : FrameworkElement
                 rate = 1.0;
                 break;
         }
+
+        _phase += dt * rate;
 
         // Entrance (spring) and exit (shrink).
         double scale = 1;
@@ -204,7 +246,7 @@ public sealed class OrbControl : FrameworkElement
             double size = layer switch { 0 => 1.22, 1 => 1.06, _ => 0.9 };
             byte alpha = layer switch { 0 => 70, 1 => 125, _ => 235 };
             double phase = layer * 2.1;
-            Geometry shape = Blob(center, radius * size, wobble * (1.0 - layer * 0.12), t * rate, phase);
+            Geometry shape = Blob(center, radius * size, wobble * (1.0 - layer * 0.12), _phase, phase);
 
             Color light = Lighten(color, layer == 2 ? 0.55 : 0.2);
             Brush fill = Radial(2L << 60 | (long)layer << 40 | (long)color.R << 16 | (long)color.G << 8 | color.B,

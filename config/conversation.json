@@ -3,7 +3,7 @@
   "speechStartTimeoutSeconds": 6,
 
   // Без Smart Turn: пауза, после которой фраза считается законченной.
-  "speechEndSilenceMilliseconds": 850,
+  "speechEndSilenceMilliseconds": 550,
 
   // Smart Turn (models/smart-turn): после короткой паузы модель по звуку решает, договорил ли ты.
   // «Не договорил» — ждёт ещё до turnMaxHoldMilliseconds. Нет файла модели — работает по паузе выше.
