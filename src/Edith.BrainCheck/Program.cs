@@ -189,6 +189,8 @@ internal static class Program
             string query = tail.Length > 1 ? tail[1] : "Mount Everest";
             Directory.CreateDirectory(dir);
             (byte[]? bytes, string caption, string reason) = Edith.App.AnswerImages.FindAsync(query, CancellationToken.None).GetAwaiter().GetResult();
+            if (bytes is null)
+                (bytes, caption, reason) = Edith.App.AnswerImages.FindOnWebAsync(query, CancellationToken.None).GetAwaiter().GetResult();
             Console.WriteLine(bytes is null ? "NO IMAGE: " + reason : $"found {bytes.Length} bytes, caption: {caption}");
             if (bytes is null)
                 return 1;

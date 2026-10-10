@@ -8,7 +8,7 @@ namespace Edith.Core;
 /// </summary>
 public sealed record ConversationSettings
 {
-    public int SpeechStartTimeoutSeconds { get; init; } = 4;
+    public int SpeechStartTimeoutSeconds { get; init; } = 6;
     public int SpeechEndSilenceMilliseconds { get; init; } = 650;
 
     /// <summary>
@@ -44,7 +44,7 @@ public sealed record ConversationSettings
         TimeSpan.FromMilliseconds(Math.Clamp(TurnMaxHoldMilliseconds, 300, 4000));
 
     public TimeSpan SpeechStartTimeout =>
-        TimeSpan.FromSeconds(Math.Clamp(SpeechStartTimeoutSeconds, 2, 15));
+        TimeSpan.FromSeconds(Math.Clamp(SpeechStartTimeoutSeconds, 5, 15));
 
     public TimeSpan SpeechEndSilence =>
         TimeSpan.FromMilliseconds(Math.Clamp(SpeechEndSilenceMilliseconds, 350, 3000));
@@ -60,7 +60,7 @@ public static class ConversationSettingsLoader
         try
         {
             return JsonSerializer.Deserialize<ConversationSettings>(File.ReadAllText(path),
-                       new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                       new JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true })
                    ?? new ConversationSettings();
         }
         catch

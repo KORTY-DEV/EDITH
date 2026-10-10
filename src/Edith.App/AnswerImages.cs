@@ -73,6 +73,8 @@ public static class AnswerImages
                 if (bytes is not null)
                 {
                     string name = System.IO.Path.GetFileNameWithoutExtension(title.Replace("File:", ""));
+                    if (!CaptionMatches(query, name))
+                        continue; // a photo of something else that only shares a word ("World of Tanks booth" for a tank)
                     return (bytes, name + " · Wikimedia Commons", "");
                 }
             }
@@ -82,6 +84,71 @@ public static class AnswerImages
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
             return (null, "", "не удалось поискать картинку: " + ex.Message);
+        }
+    }
+
+    private static readonly string[] CaptionStop = ["the", "and", "of", "in", "on", "for", "world", "photo", "picture", "image", "best", "new"];
+
+    /// <summary>Whether a found picture's title speaks of what was asked: at least half of the asked words (3+ letters) appear in it.</summary>
+    public static bool CaptionMatches(string query, string caption)
+    {
+        string[] words = System.Text.RegularExpressions.Regex.Split(query.ToLowerInvariant(), @"[^\p{L}\p{N}]+")
+            .Where(w => w.Length >= 3 && !CaptionStop.Contains(w)).Distinct().ToArray();
+        if (words.Length == 0)
+            return true;
+        string text = caption.ToLowerInvariant();
+        int hit = words.Count(w => text.Contains(w, StringComparison.Ordinal));
+        return hit * 2 >= words.Length;
+    }
+
+    /// <summary>
+    /// A picture of something specific (a game tank, a model of phone) from an ordinary web image search, in a hidden browser of its own:
+    /// the way a person would look. Needs the browser component (models/browsers); without it, says why and returns nothing.
+    /// </summary>
+    public static async Task<(byte[]? Bytes, string Caption, string Reason)> FindOnWebAsync(string query, CancellationToken cancellationToken)
+    {
+        try
+        {
+            Environment.SetEnvironmentVariable("PLAYWRIGHT_BROWSERS_PATH", PlaywrightBrowser.BrowsersPath);
+            using Microsoft.Playwright.IPlaywright playwright = await Microsoft.Playwright.Playwright.CreateAsync();
+            await using Microsoft.Playwright.IBrowser browser = await playwright.Chromium.LaunchAsync(new Microsoft.Playwright.BrowserTypeLaunchOptions
+            {
+                Headless = true,
+                Args = ["--disable-gpu", "--disable-blink-features=AutomationControlled"],
+            });
+            Microsoft.Playwright.IBrowserContext context = await browser.NewContextAsync(new Microsoft.Playwright.BrowserNewContextOptions { Locale = "ru-RU" });
+            Microsoft.Playwright.IPage page = await context.NewPageAsync();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(25));
+
+            await page.GotoAsync("https://www.bing.com/images/search?q=" + Uri.EscapeDataString(query) + "&qft=+filterui:imagesize-large&form=IRFLTR",
+                new Microsoft.Playwright.PageGotoOptions { WaitUntil = Microsoft.Playwright.WaitUntilState.DOMContentLoaded, Timeout = 20_000 });
+            await page.WaitForSelectorAsync("a.iusc", new Microsoft.Playwright.PageWaitForSelectorOptions { Timeout = 10_000 });
+
+            string json = await page.EvaluateAsync<string>("""
+                () => JSON.stringify([...document.querySelectorAll('a.iusc')].slice(0, 12).map(a => {
+                  try { const m = JSON.parse(a.getAttribute('m')); return { url: m.murl, title: m.t || '', page: m.purl || '' }; } catch { return null; }
+                }).filter(x => x && x.url))
+                """);
+            using System.Text.Json.JsonDocument list = System.Text.Json.JsonDocument.Parse(json);
+            foreach (System.Text.Json.JsonElement item in list.RootElement.EnumerateArray())
+            {
+                string url = item.GetProperty("url").GetString() ?? "";
+                string title = System.Text.RegularExpressions.Regex.Replace(item.GetProperty("title").GetString() ?? "", "<[^>]+>|&[a-z]+;", "").Trim();
+                if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || Regex.IsMatch(url, @"\.(svg|webp|gif)(\?|$)", RegexOptions.IgnoreCase))
+                    continue;
+                (byte[]? bytes, _) = await LoadAsync(url, timeout.Token);
+                if (bytes is null || bytes.Length < 20_000)
+                    continue;
+                string host = Uri.TryCreate(url, UriKind.Absolute, out Uri? u) ? u.Host : "web";
+                return (bytes, (title.Length > 0 ? (title.Length > 90 ? title[..90] + "…" : title) + " · " : "") + host, "");
+            }
+
+            return (null, "", "в интернете подходящих картинок не нашлось");
+        }
+        catch (Exception ex) when (ex is Microsoft.Playwright.PlaywrightException or OperationCanceledException or System.Text.Json.JsonException or HttpRequestException)
+        {
+            return (null, "", "поиск картинок в интернете недоступен: " + ex.Message.Split((char)10)[0]);
         }
     }
 

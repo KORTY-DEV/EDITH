@@ -32,3 +32,14 @@ public sealed class ImageQueryTests
     public void Superlatives_NeedALookupFirst(string query, bool expected) =>
         Assert.Equal(expected, BrainToolRouter.IsSuperlative(query));
 }
+
+public sealed class CaptionMatchTests
+{
+    [Fact]
+    public void BoothPhoto_IsNotATank_ButEverestIsEverest()
+    {
+        Assert.False(Edith.App.AnswerImages.CaptionMatches("Astron Rex World of Tanks", "E3 2011 - World of Tanks booth (Wargaming.net)"));
+        Assert.True(Edith.App.AnswerImages.CaptionMatches("Astron Rex World of Tanks", "ASTRON Rex & Alembic Skin World Of Tanks - YouTube"));
+        Assert.True(Edith.App.AnswerImages.CaptionMatches("Mount Everest", "Everest, Himalayas"));
+    }
+}

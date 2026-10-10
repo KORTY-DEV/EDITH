@@ -928,16 +928,26 @@ public sealed class BrainToolRouter
         }
 
         string reason = "";
+        bool webTried = false;
         foreach (string variant in ImageQueryVariants(query))
         {
             (byte[]? bytes, string caption, string why) = await AnswerImages.FindAsync(variant, cancellationToken);
+            reason = why;
+
+            // Wikimedia knows landmarks and things, not game vehicles or new products: ask the web once, with the most specific phrase.
+            if (bytes is null && !webTried)
+            {
+                webTried = true;
+                (bytes, caption, why) = await AnswerImages.FindOnWebAsync(variant, cancellationToken);
+                if (bytes is null)
+                    reason = why;
+            }
+
             if (bytes is not null)
             {
                 AnswerImages.Show(bytes, caption);
                 return ImageShown(caption);
             }
-
-            reason = why;
         }
 
         return "Картинку не нашла (" + reason + "). Скажи об этом коротко; если хозяин захочет, предложи нарисовать.";

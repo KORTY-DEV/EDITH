@@ -22,12 +22,12 @@ public sealed class ConversationPolicyTests
     }
 
     [Fact]
-    public void Wake_PauseThenSpeech_IsAcceptedInsideFourSecondWindow()
+    public void Wake_PauseThenSpeech_IsAcceptedInsideSixSecondWindow()
     {
         var machine = new ConversationStateMachine();
 
         machine.WakeDetected();
-        Assert.Equal(TimeSpan.FromSeconds(4), machine.Settings.SpeechStartTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(6), machine.Settings.SpeechStartTimeout);
         Assert.Equal(ConversationState.WaitingForSpeech, machine.State);
 
         // A two-second pause is deliberately still inside the speech-start window.
