@@ -52,7 +52,8 @@ public static class UiModes
         string t = command.Trim().ToLowerInvariant().Replace('ё', 'е').TrimEnd('.', '!', '?');
         reply = "";
 
-        if (t is "убери окно" or "скрой окно" or "спрячь окно" or "закрой окно" or "убери ответ" or "скрой ответ")
+        if (t is "убери окно" or "скрой окно" or "спрячь окно" or "закрой окно" or "убери ответ" or "скрой ответ"
+            or "уберите окно" or "убери окошко" or "убери картинку" or "скрой картинку" or "убери фото" or "закрой картинку" or "окно" or "окошко")
         {
             HideRequested?.Invoke();
             reply = "Убрала.";

@@ -1629,6 +1629,8 @@ public partial class App : Application
     }
 
 
+    private const int WakeLeadSamples = 16000 * 9 / 10;
+
     private void BeginWaitingForCommand(
         long session,
         int timeoutMilliseconds,
@@ -1645,6 +1647,15 @@ public partial class App : Application
 
         _command?
             .StartSession();
+
+        // The name is recognised a moment after it is said; a fluent "Эдит, убери окно" has already begun the command by then
+        // (the first word was lost: only "окно" reached the recogniser). Give the session the last stretch of sound; the leading
+        // "Эдит" in it is cut off as for any command.
+        if (reason == "wake")
+        {
+            float[] lead = _recentAudio.Last(WakeLeadSamples);
+            _command?.AcceptAudio(lead, lead.Length);
+        }
 
         _voiceMode =
             VoiceMode.WaitingCommand;

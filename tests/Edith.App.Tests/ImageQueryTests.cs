@@ -43,3 +43,28 @@ public sealed class CaptionMatchTests
         Assert.True(Edith.App.AnswerImages.CaptionMatches("Mount Everest", "Everest, Himalayas"));
     }
 }
+
+public sealed class HideWindowPhraseTests
+{
+    [Theory]
+    [InlineData("убери окно")]
+    [InlineData("Убери окно.")]
+    [InlineData("окно")]
+    [InlineData("убери картинку")]
+    public void Phrases_HideTheWindow_AndStaySpoken(string phrase)
+    {
+        bool hidden = false;
+        void OnHide() => hidden = true;
+        Edith.App.UiModes.HideRequested += OnHide;
+        try
+        {
+            Assert.True(Edith.App.UiModes.TryHandle(phrase, out string reply));
+            Assert.Equal("Убрала.", reply);
+            Assert.True(hidden);
+        }
+        finally
+        {
+            Edith.App.UiModes.HideRequested -= OnHide;
+        }
+    }
+}
