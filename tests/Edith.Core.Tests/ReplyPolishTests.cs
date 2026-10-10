@@ -1,4 +1,4 @@
-using Edith.Core;
+﻿using Edith.Core;
 using Edith.Core.Brain;
 
 namespace Edith.Core.Tests;
@@ -23,4 +23,15 @@ public sealed class ReplyPolishTests
     [InlineData("Грузит Uley Core.", "Грузит Улей коре.")]
     public void Speech(string raw, string expected) =>
         Assert.Equal(expected, VoiceText.ForSpeech(raw));
+
+    [Theory]
+    [InlineData("Позвольте уточнить, какую именно видеокарту считать лучшей? Это зависит от критериев. Уточните, пожалуйста.", true)]
+    [InlineData("Хорошо. Скажите, какую именно модель вы имеете в виду.", true)]
+    [InlineData("Какой город вас интересует?", true)]
+    [InlineData("Сейчас в Самаре плюс четырнадцать, облачно.", false)]
+    [InlineData("Погода хорошая. Нужно что-то ещё?", false)]
+    [InlineData("Вы спрашивали про видеокарту? Я нашла три варианта, самый дорогой стоит сто сорок тысяч.", false)]
+    [InlineData("", false)]
+    public void AsksForAnswer_OnlyWhenTheTailAsksTheOwnerForSomething(string reply, bool expected) =>
+        Assert.Equal(expected, ReplyPolish.AsksForAnswer(reply));
 }

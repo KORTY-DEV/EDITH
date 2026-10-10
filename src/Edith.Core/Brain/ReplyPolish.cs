@@ -29,6 +29,26 @@ public static class ReplyPolish
 
     private static readonly Regex Sentences = new(@"(?<=[.!?…])\s+", RegexOptions.Compiled);
 
+    // She asks the owner for something: a question mark in the last sentences, or a plain request to clarify.
+    private static readonly Regex AsksForReply = new(
+        @"(?:уточни(?:те)?|подскажи(?:те)?|скажи(?:те)?,?\s+(?:какой|какую|какое|какие|что|где|когда|сколько)|какую\s+именно|какой\s+именно|какое\s+именно|что\s+именно|назови(?:те)?|напиши(?:те)?|ответьте|выберите|что\s+выбираете)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Did the answer ask the owner something (a question, "Уточните, пожалуйста", "Скажите, какую именно...")? Then the next phrase is
+    /// the reply to it, heard without "Эдит". Only the last two sentences count: a question far back is not a request.
+    /// </summary>
+    public static bool AsksForAnswer(string reply)
+    {
+        if (string.IsNullOrWhiteSpace(reply))
+            return false;
+
+        string[] sentences = Sentences.Split(reply.Trim()).Where(s => s.Length > 0).ToArray();
+        IEnumerable<string> tail = sentences.TakeLast(2);
+        // A question mark counts only at the very end (a rhetorical question followed by the answer is not a request).
+        return (sentences[^1].TrimEnd().EndsWith('?') || tail.Any(s => AsksForReply.IsMatch(s))) && !IsOffer(sentences[^1]);
+    }
+
     /// <summary>"Нужно что-то ещё?", "Если хотите, могу подробнее": a sentence that only offers more.</summary>
     public static bool IsOffer(string sentence) => OfferTail.IsMatch(sentence.Trim());
 

@@ -47,6 +47,10 @@ foreach ($m in 'wake\custom', 'wake\custom-v3', 'vad') {
 Copy-Item (Join-Path $repo 'README.md') $pack
 Copy-Item (Join-Path $repo 'LICENSE') $pack
 Copy-Item (Join-Path $PSScriptRoot 'Install-Release.ps1') (Join-Path $pack 'Install-Release.ps1')
+Copy-Item (Join-Path $PSScriptRoot 'Setup.ps1') (Join-Path $pack 'Setup.ps1')
+Copy-Item (Join-Path $PSScriptRoot 'Install-Models.ps1') (Join-Path $pack 'Install-Models.ps1')
+# Один двойной щелчок: «Установка.cmd» запускает Setup.ps1 (имя с русскими буквами, содержимое — только ASCII).
+Copy-Item (Join-Path $PSScriptRoot 'Setup.cmd') (Join-Path $pack ([string]::Concat([char]0x423,[char]0x441,[char]0x442,[char]0x430,[char]0x43D,[char]0x43E,[char]0x432,[char]0x43A,[char]0x430) + '.cmd'))
 
 Write-Host '== проверка на ключи и личные данные'
 $forbidden = @('cla' + 'ude', 'anthr' + 'opic', 'cod' + 'ex', 'Co-Auth' + 'ored', 'korty-' + 'news', 'C:\Users\' + 'korty')

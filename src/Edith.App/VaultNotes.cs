@@ -104,7 +104,7 @@ public sealed class VaultNotes
             }
             catch (Exception ex)
             {
-                Edith.Core.Runtime.EdithEvents.Publish(Edith.Core.Runtime.EventKinds.Error, "Заметки: не посчитались векторы: " + ex.Message);
+                Edith.Core.Runtime.EdithEvents.Publish(Edith.Core.Runtime.EventKinds.Error, "Заметки: не посчитались векторы: " + ex.Message + " @ " + (ex.StackTrace ?? "").Split((char)10).FirstOrDefault()?.Trim());
             }
             finally
             {

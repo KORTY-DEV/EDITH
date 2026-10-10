@@ -1924,10 +1924,10 @@ public partial class App : Application
 
                 // She asked the owner something ("Хотите услышать продолжение?"): listen for the
                 // answer without "Эдит" for a few seconds instead of going deaf at once.
-                if (response.TrimEnd().EndsWith('?') &&
+                if (Edith.Core.Brain.ReplyPolish.AsksForAnswer(response) &&
                     _conversationSettings.AnswerFollowUp)
                 {
-                    BeginWaitingForCommand(session, 7000, "question");
+                    BeginWaitingForCommand(session, 9000, "question");
                     keepSessionOpen = true;
                     ShowListening();
                     return;

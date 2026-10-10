@@ -126,6 +126,9 @@ public sealed class BrainToolRouter
                 "describe_screen" =>
                     await DescribeScreenAsync(arguments, cancellationToken),
 
+                "find_image" =>
+                    await FindImageAsync(arguments, cancellationToken),
+
                 "show_image" =>
                     await ShowImageAsync(arguments, cancellationToken),
 
@@ -858,6 +861,20 @@ public sealed class BrainToolRouter
 
     /// <summary>The foreground window (UI Automation + OCR); set by the runtime.</summary>
     public static Edith.Core.Screen.IScreen Screen { get; set; } = new WindowsScreen();
+
+    private static async Task<string> FindImageAsync(JsonElement arguments, CancellationToken cancellationToken)
+    {
+        string query = GetString(arguments, "query");
+        if (query.Length == 0)
+            return "Не поняла, что искать.";
+
+        (byte[]? bytes, string caption, string reason) = await AnswerImages.FindAsync(query, cancellationToken);
+        if (bytes is null)
+            return "Картинку не нашла: " + reason + ".";
+
+        AnswerImages.Show(bytes, caption);
+        return "Картинка найдена и показана в окне ответов: " + caption + ".";
+    }
 
     private static async Task<string> ShowImageAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
