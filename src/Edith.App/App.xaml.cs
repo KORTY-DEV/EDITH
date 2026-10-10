@@ -1831,7 +1831,8 @@ public partial class App : Application
             response = VoiceText.ForSpeech(generatedResponse);
 
             // The answer is also written on the desktop (always in quiet mode, when the window is on otherwise).
-            if (UiModes.WindowOn || UiModes.Quiet)
+            // Replies to the window's own commands ("убери окно" -> "Убрала.") stay spoken only: showing them brought the window back.
+            if ((UiModes.WindowOn || UiModes.Quiet) && _response.LastRoute != "UiMode")
             {
                 string asked = text;
                 string shown = generatedResponse;
