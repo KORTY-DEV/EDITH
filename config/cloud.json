@@ -1,0 +1,12 @@
+{
+  // Облачный мозг GigaChat (Сбер). Бесплатно для физлиц: ~365 млн токенов в год на все модели.
+  // enabled: false — только локальная модель. Без интернета или по концу квоты EDITH сама
+  // отвечает локально. Модели перебираются по порядку, когда у текущей кончается квота.
+  "enabled": true,
+  "models": ["GigaChat-2-Max", "GigaChat-2-Pro", "GigaChat-2"],
+  "scope": "GIGACHAT_API_PERS",
+  "authKeyPath": "C:\\EDITH\\secrets\\gigachat-auth-key.txt",
+  "rootCertPath": "C:\\EDITH\\config\\russian_trusted_root_ca.cer",
+  "timeoutSeconds": 20,
+  "maxTokens": 600
+}

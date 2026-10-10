@@ -1,0 +1,22 @@
+[
+  // Скопируй в config/apps.json и дополни. Запись с тем же id заменяет встроенную,
+  // новые id добавляются. processes — имена процессов без .exe (видно в диспетчере задач),
+  // shortcuts — названия ярлыков из меню «Пуск» или рабочего стола.
+  // confirmClose: true — перед закрытием EDITH спросит подтверждение (игры, редакторы).
+  {
+    "id": "factorio",
+    "title": "Factorio",
+    "aliases": ["факторио", "factorio"],
+    "processes": ["factorio"],
+    "shortcuts": ["factorio — ярлык"],
+    "confirmClose": true
+  },
+  {
+    "id": "palworld",
+    "title": "Palworld",
+    "aliases": ["палворлд", "palworld"],
+    "processes": ["Palworld-Win64-Shipping"],
+    "shortcuts": ["Palworld"],
+    "confirmClose": true
+  }
+]

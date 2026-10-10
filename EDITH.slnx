@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Edith.App/Edith.App.csproj" />
+    <Project Path="src/Edith.Audio/Edith.Audio.csproj" />
+    <Project Path="src/Edith.BrainCheck/Edith.BrainCheck.csproj" />
+    <Project Path="src/Edith.Core/Edith.Core.csproj" />
+    <Project Path="src/Edith.Speech/Edith.Speech.csproj" />
+    <Project Path="src/Edith.SpeechCheck/Edith.SpeechCheck.csproj" />
+    <Project Path="src/Edith.WakeCheck/Edith.WakeCheck.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Edith.Audio.Tests/Edith.Audio.Tests.csproj" />
+    <Project Path="tests/Edith.App.Tests/Edith.App.Tests.csproj" />
+    <Project Path="tests/Edith.Core.Tests/Edith.Core.Tests.csproj" />
+    <Project Path="tests/Edith.Speech.Tests/Edith.Speech.Tests.csproj" />
+  </Folder>
+</Solution>

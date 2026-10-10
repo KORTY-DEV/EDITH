@@ -1,0 +1,7 @@
+{
+  // Распознавание команд после «Эдит». gigaam — GigaAM v3 на CPU (Vosk работает параллельно
+  // как запасной), vosk — только Vosk.
+  "engine": "gigaam",
+  "modelDirectory": "C:\EDITH\models\stt\sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16",
+  "threads": 2
+}

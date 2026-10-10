@@ -1,0 +1,10 @@
+{
+  // Фоновая сводка («пульс»). Всё считается на этом ПК; ничего не уходит в облако,
+  // пока dossierToPrompt = false. Скопируйте в pulse.json и укажите свои репозитории.
+  "enabled": true,
+  "notify": true,
+  "dossierToPrompt": false,
+  "repos": [
+    "C:/Projects/MyProject"
+  ]
+}

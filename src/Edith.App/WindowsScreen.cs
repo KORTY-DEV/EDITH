@@ -1,0 +1,354 @@
+﻿using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows.Automation;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
+using Edith.Core.Screen;
+
+namespace Edith.App;
+
+/// <summary>
+/// The foreground window, read the precise way first (UI Automation: the app's own text),
+/// then from pixels (Windows OCR, ru+en) when the app exposes little (games, images, video).
+/// Everything runs on the CPU and nothing leaves the PC.
+/// </summary>
+public sealed class WindowsScreen : IScreen
+{
+    private const int MaxUiaNodes = 400;
+    private static readonly TimeSpan UiaBudget = TimeSpan.FromSeconds(2);
+    private const int MinUiaChars = 40;
+
+    private static readonly ControlType[] Clickable =
+    [
+        ControlType.Button, ControlType.MenuItem, ControlType.Hyperlink, ControlType.TabItem,
+        ControlType.ListItem, ControlType.CheckBox, ControlType.RadioButton, ControlType.SplitButton,
+        ControlType.TreeItem,
+    ];
+
+    public async Task<ScreenContent?> ReadForegroundAsync(CancellationToken cancellationToken)
+    {
+        IntPtr window = ForegroundWindow(out string app, out string title);
+        if (window == IntPtr.Zero)
+            return null;
+
+        string uiaText = await Task.Run(() => ReadUia(window), cancellationToken);
+        if (uiaText.Length >= MinUiaChars)
+            return new ScreenContent(app, title, uiaText, "uia");
+
+        string ocrText = await ReadOcrAsync(window, cancellationToken);
+        return ocrText.Length > uiaText.Length
+            ? new ScreenContent(app, title, ocrText, "ocr")
+            : new ScreenContent(app, title, uiaText, "uia");
+    }
+
+    public IReadOnlyList<UiElementInfo> Clickables()
+    {
+        IntPtr window = ForegroundWindow(out _, out _);
+        if (window == IntPtr.Zero)
+            return [];
+
+        try
+        {
+            AutomationElement root = AutomationElement.FromHandle(window);
+            var condition = new OrCondition(Clickable.Select(t => (Condition)new PropertyCondition(AutomationElement.ControlTypeProperty, t)).ToArray());
+            return root.FindAll(TreeScope.Descendants, condition)
+                .Cast<AutomationElement>()
+                .Take(MaxUiaNodes)
+                .Select(e => new UiElementInfo(SafeName(e), e.Current.ControlType.ProgrammaticName.Replace("ControlType.", "")))
+                .Where(e => e.Name.Length > 0)
+                .ToList();
+        }
+        catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or COMException)
+        {
+            return [];
+        }
+    }
+
+    public bool Click(UiElementInfo element)
+    {
+        IntPtr window = ForegroundWindow(out _, out _);
+        if (window == IntPtr.Zero)
+            return false;
+
+        try
+        {
+            AutomationElement root = AutomationElement.FromHandle(window);
+            AutomationElement? target = root.FindFirst(
+                TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, element.Name));
+            if (target is null)
+                return false;
+
+            if (target.TryGetCurrentPattern(InvokePattern.Pattern, out object invoke))
+                ((InvokePattern)invoke).Invoke();
+            else if (target.TryGetCurrentPattern(SelectionItemPattern.Pattern, out object select))
+                ((SelectionItemPattern)select).Select();
+            else if (target.TryGetCurrentPattern(TogglePattern.Pattern, out object toggle))
+                ((TogglePattern)toggle).Toggle();
+            else if (target.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out object expand))
+                ((ExpandCollapsePattern)expand).Expand();
+            else
+                return false;
+
+            return true;
+        }
+        catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or COMException or ElementNotEnabledException)
+        {
+            return false;
+        }
+    }
+
+    public void Type(string text)
+    {
+        var inputs = new List<Input>(text.Length * 2);
+        foreach (char c in text)
+        {
+            inputs.Add(Unicode(c, keyUp: false));
+            inputs.Add(Unicode(c, keyUp: true));
+        }
+
+        if (inputs.Count > 0)
+            SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<Input>());
+    }
+
+    // ------------------------------------------------------------------ foreground window
+
+    private static IntPtr ForegroundWindow(out string app, out string title)
+    {
+        app = title = "";
+        IntPtr window = GetForegroundWindow();
+        if (window == IntPtr.Zero)
+            return IntPtr.Zero;
+
+        GetWindowThreadProcessId(window, out uint pid);
+        try
+        {
+            using Process process = Process.GetProcessById((int)pid);
+            app = process.ProcessName;
+
+            // EDITH's own status panel is not what the user means by "the screen".
+            if (pid == (uint)Environment.ProcessId)
+                return IntPtr.Zero;
+        }
+        catch (ArgumentException)
+        {
+        }
+
+        var buffer = new StringBuilder(512);
+        GetWindowText(window, buffer, buffer.Capacity);
+        title = buffer.ToString();
+        return window;
+    }
+
+    // ------------------------------------------------------------------ UI Automation
+
+    public static string ReadUia(IntPtr window)
+    {
+        try
+        {
+            AutomationElement root = AutomationElement.FromHandle(window);
+            var parts = new List<string>();
+            var queue = new Queue<AutomationElement>();
+            queue.Enqueue(root);
+            TreeWalker walker = TreeWalker.ControlViewWalker;
+            Stopwatch clock = Stopwatch.StartNew();
+            int visited = 0;
+
+            while (queue.Count > 0 && visited < MaxUiaNodes && clock.Elapsed < UiaBudget)
+            {
+                AutomationElement element = queue.Dequeue();
+                visited++;
+
+                string name = SafeName(element);
+                if (name.Length > 0 && element != root)
+                    parts.Add(name);
+
+                if (element.TryGetCurrentPattern(ValuePattern.Pattern, out object value))
+                {
+                    string text = ((ValuePattern)value).Current.Value ?? "";
+                    if (text.Length > 0)
+                        parts.Add(text.Length > 1500 ? text[..1500] : text);
+                }
+                else if (element.TryGetCurrentPattern(TextPattern.Pattern, out object textPattern))
+                {
+                    string text = ((TextPattern)textPattern).DocumentRange.GetText(2000) ?? "";
+                    if (text.Length > 0)
+                        parts.Add(text);
+                }
+
+                for (AutomationElement? child = walker.GetFirstChild(element);
+                     child is not null && queue.Count < MaxUiaNodes;
+                     child = walker.GetNextSibling(child))
+                {
+                    queue.Enqueue(child);
+                }
+            }
+
+            return UiTargets.JoinText(parts);
+        }
+        catch (Exception ex) when (ex is ElementNotAvailableException or InvalidOperationException or COMException)
+        {
+            return "";
+        }
+    }
+
+    private static string SafeName(AutomationElement element)
+    {
+        try
+        {
+            return (element.Current.Name ?? "").Trim();
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    // ------------------------------------------------------------------ OCR
+
+    private static async Task<string> ReadOcrAsync(IntPtr window, CancellationToken cancellationToken)
+    {
+        try
+        {
+            byte[]? png = CaptureWindowPng(window);
+            if (png is null)
+                return "";
+
+            return await OcrPngAsync(png, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            VoiceDiagnostics.WriteRaw("screen-ocr-error.txt", ex.ToString());
+            return "";
+        }
+    }
+
+    /// <summary>Windows OCR in Russian (English as a fallback language) over a PNG image.</summary>
+    public static async Task<string> OcrPngAsync(byte[] png, CancellationToken cancellationToken)
+    {
+        using var memory = new MemoryStream(png);
+        using Windows.Storage.Streams.IRandomAccessStream stream = memory.AsRandomAccessStream();
+        Windows.Graphics.Imaging.BitmapDecoder decoder = await Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream);
+        using Windows.Graphics.Imaging.SoftwareBitmap bitmap = await decoder.GetSoftwareBitmapAsync(
+            Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
+            Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied);
+
+        Windows.Media.Ocr.OcrEngine? engine =
+            Windows.Media.Ocr.OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("ru")) ??
+            Windows.Media.Ocr.OcrEngine.TryCreateFromUserProfileLanguages();
+        if (engine is null)
+            return "";
+
+        cancellationToken.ThrowIfCancellationRequested();
+        Windows.Media.Ocr.OcrResult result = await engine.RecognizeAsync(bitmap);
+        return UiTargets.JoinText(result.Lines.Select(l => l.Text));
+    }
+
+    /// <summary>The foreground window as a JPEG (longest side at most <paramref name="maxSide"/> px), or null.</summary>
+    public static byte[]? CaptureForegroundJpeg(int maxSide = 1600, int quality = 75)
+    {
+        IntPtr window = GetForegroundWindow();
+        byte[]? png = window == IntPtr.Zero ? null : CaptureWindowPng(window);
+        if (png is null)
+            return null;
+
+        using var input = new MemoryStream(png);
+        BitmapDecoder decoder = BitmapDecoder.Create(input, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        BitmapSource frame = decoder.Frames[0];
+        double scale = Math.Min(1.0, (double)maxSide / Math.Max(frame.PixelWidth, frame.PixelHeight));
+        if (scale < 1.0)
+            frame = new TransformedBitmap(frame, new System.Windows.Media.ScaleTransform(scale, scale));
+
+        var encoder = new JpegBitmapEncoder { QualityLevel = quality };
+        encoder.Frames.Add(BitmapFrame.Create(frame));
+        using var output = new MemoryStream();
+        encoder.Save(output);
+        return output.ToArray();
+    }
+
+    private static byte[]? CaptureWindowPng(IntPtr window)
+    {
+        if (!GetWindowRect(window, out Rect rect))
+            return null;
+
+        int width = Math.Max(0, rect.Right - rect.Left);
+        int height = Math.Max(0, rect.Bottom - rect.Top);
+        if (width < 16 || height < 16)
+            return null;
+
+        IntPtr screen = GetDC(IntPtr.Zero);
+        IntPtr memoryDc = CreateCompatibleDC(screen);
+        IntPtr bitmap = CreateCompatibleBitmap(screen, width, height);
+        IntPtr old = SelectObject(memoryDc, bitmap);
+        try
+        {
+            BitBlt(memoryDc, 0, 0, width, height, screen, rect.Left, rect.Top, 0x00CC0020 /* SRCCOPY */);
+            BitmapSource source = Imaging.CreateBitmapSourceFromHBitmap(bitmap, IntPtr.Zero, System.Windows.Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(source));
+            using var output = new MemoryStream();
+            encoder.Save(output);
+            return output.ToArray();
+        }
+        finally
+        {
+            SelectObject(memoryDc, old);
+            DeleteObject(bitmap);
+            DeleteDC(memoryDc);
+            ReleaseDC(IntPtr.Zero, screen);
+        }
+    }
+
+    // ------------------------------------------------------------------ native
+
+    private static Input Unicode(char c, bool keyUp) => new()
+    {
+        Type = 1, // INPUT_KEYBOARD
+        Keyboard = new KeyboardInput { Scan = c, Flags = 0x0004 /* KEYEVENTF_UNICODE */ | (keyUp ? 0x0002u : 0u) },
+    };
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardInput
+    {
+        public ushort VirtualKey;
+        public ushort Scan;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct Input
+    {
+        [FieldOffset(0)] public uint Type;
+        [FieldOffset(8)] public KeyboardInput Keyboard;
+        [FieldOffset(8)] private MouseInputPadding _padding;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInputPadding
+    {
+        public int X, Y;
+        public uint Data, Flags, Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out Rect rect);
+    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr dc);
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, Input[] inputs, int size);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr dc);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr dc, int width, int height);
+    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
+    [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr dest, int x, int y, int w, int h, IntPtr src, int sx, int sy, uint rop);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
+    [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr dc);
+}

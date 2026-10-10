@@ -1,0 +1,16 @@
+{
+  "provider": "auto",
+  "apiKeyPath": "C:\\EDITH\\secrets\\yandex-speechkit-api-key.txt",
+  "voice": "marina",
+  "role": "neutral",
+  "speed": 1.05,
+  "sampleRate": 48000,
+  "timeoutSeconds": 5,
+  "localEngine": "silero",
+  "localVoice": "xenia",
+  "localModelPath": "C:\\EDITH\\models\\tts\\silero\\v5_ru.pt",
+  "localPythonPath": "C:\\EDITH\\data\\tts-venv\\Scripts\\python.exe",
+  "localWorkerPath": "C:\\EDITH\\scripts\\tts\\silero_worker.py",
+  "localNumThreads": 4,
+  "fallback": "windows"
+}

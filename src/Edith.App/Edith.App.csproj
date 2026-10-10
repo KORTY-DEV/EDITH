@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- WinForms only for the tray NotifyIcon; its namespaces are not imported globally. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>edith.ico</ApplicationIcon>
+    <AssemblyName>Edith.App</AssemblyName>
+    <RootNamespace>Edith.App</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Edith.Core\Edith.Core.csproj" />
+    <ProjectReference Include="..\Edith.Audio\Edith.Audio.csproj" />
+    <ProjectReference Include="..\Edith.Speech\Edith.Speech.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Content Include="edith.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" Version="1.62.0" />
+  </ItemGroup>
+
+</Project>
+
+

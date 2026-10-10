@@ -1,0 +1,46 @@
+{
+  "enabled": true,
+  "endpoint": "http://127.0.0.1:11435",
+  "ownServerModelsPath": "C:\\AI\\OllamaModels",
+  "model": "qwen3:8b",
+  "autoModelMaxBytes": 6000000000,
+  "maxToolSteps": 5,
+
+  "normal": {
+    "keepAlive": "3h",
+    "numCtx": 4096,
+    "answerNumPredict": 256,
+    "toolNumPredict": 96,
+    "stepTimeoutSeconds": 20,
+    "coldLoadTimeoutSeconds": 40,
+    "totalTimeoutSeconds": 60,
+    "fallbackToLightOnCpu": true
+  },
+
+  "gaming": {
+    "enabled": true,
+    "processes": [
+      "WorldOfTanks",
+      "Tanki",
+      "wot",
+      "WorldOfWarships",
+      "cs2",
+      "dota2",
+      "GTA5",
+      "RDR2"
+    ],
+    "detectFullscreen": true,
+    "pollSeconds": 5,
+    "preferLightModel": true,
+    "model": "ministral-3:3b",
+    "cpuOnly": true,
+    "numThread": 4,
+    "keepAlive": "5m",
+    "numCtx": 2048,
+    "answerNumPredict": 128,
+    "toolNumPredict": 96,
+    "stepTimeoutSeconds": 30,
+    "coldLoadTimeoutSeconds": 45,
+    "totalTimeoutSeconds": 90
+  }
+}

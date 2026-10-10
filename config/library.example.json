@@ -1,0 +1,27 @@
+{
+  // Библиотекарь: сам разбирает сессии ваших ИИ-агентов и ведёт архив в Obsidian.
+  // Скопируйте в library.json (Install-Edith.ps1 делает это сам) и поправьте под себя.
+  // Включается кнопкой в трее («Библиотекарь»), голосом («включи библиотекаря») или в «Настройках…».
+  // Пишет только свои заметки в хранилище и коммитит только их (без push); всё остальное только читает.
+  "vaultPath": "C:/Obsidian/MyVault",
+  // local — локальная модель Ollama (ничего не уходит в облако); gigachat — облако (быстрее).
+  "provider": "local",
+  "localModel": "qwen3.5:4b",
+  // Сколько слоёв модели держать в видеопамяти (остальные считает процессор): меньше слоёв — меньше видеопамяти.
+  // -1 — всё на видеокарте.
+  "localGpuLayers": 26,
+  // Сколько часов файл сессии не меняется, прежде чем её считают законченной.
+  "idleHours": 3,
+  // Где агенты хранят сессии. format: messages — строки {type: user|assistant, message: {...}};
+  // events — строки {payload: {type: message, role, content: [...]}}. pattern/recursive — как искать файлы.
+  "sources": [
+    { "id": "agent-a", "label": "Агент A", "path": "~/.agent-a/projects", "format": "messages" },
+    { "id": "agent-b", "label": "Агент B", "path": "~/.agent-b/sessions", "format": "events", "pattern": "rollout-*.jsonl", "recursive": true }
+  ],
+  // Папки, где библиотекарь ищет новые документы (только чтение), раз в несколько часов.
+  "scanFolders": ["~/Documents"],
+  // Проекты: раздел хранилища, по каким словам в названии папки сессии узнавать проект, git-репозиторий для снимка.
+  "projects": [
+    { "name": "MyProject", "section": "10_MyProject", "aliases": ["myproject"], "repo": "C:/Projects/MyProject" }
+  ]
+}

@@ -1,0 +1,10 @@
+﻿{
+    "engine":  "hybrid",
+    "customModel":  "C:\\EDITH\\models\\wake\\custom\\edith.onnx",
+    "melModel":  "C:\\EDITH\\models\\wake\\custom\\melspectrogram.onnx",
+    "embeddingModel":  "C:\\EDITH\\models\\wake\\custom\\embedding_model.onnx",
+    "threshold":  0.7,
+    "minConsecutiveHits":  2,
+    "cooldownMs":  1000,
+    "fallbackToVosk":  true
+}

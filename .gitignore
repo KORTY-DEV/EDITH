@@ -1,0 +1,46 @@
+﻿# build output
+bin/
+obj/
+.vs/
+*.user
+*.suo
+TestResults/
+
+# runtime data, models, secrets and training material never go into git
+/data/
+/models/
+/secrets/
+/config/tts.json
+/wake-training/
+
+# audio / datasets / model backups
+*.wav
+*.npy
+*.bak
+*.bak-*
+*.onnx.bak*
+*.backup
+
+# local scratch builds
+/build-*/
+
+# local TTS experiments
+/data/tts-gpu-venv/
+/models/tts-bench/
+
+# installed EDITH (scripts/Install-Edith.ps1)
+/app/
+
+__pycache__/
+*.pyc
+
+# personal configs (examples are tracked as *.example.json) and owner-specific lists
+/config/library.json
+/config/pulse.json
+/config/vault.json
+/config/agent-names.txt
+/config/protected-processes.txt
+/config/pronounce.local.json
+/app/
+/docs/*.pdf
+/config/apps.json

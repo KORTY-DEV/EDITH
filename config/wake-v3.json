@@ -1,0 +1,12 @@
+{
+  "engine": "custom-v3",
+  "customV3Model": "C:\\EDITH\\models\\wake\\custom-v3\\edith-stage1.onnx",
+  "verifierModel": "C:\\EDITH\\models\\wake\\custom-v3\\edith-verifier.onnx",
+  "melModel": "C:\\EDITH\\models\\wake\\custom\\melspectrogram.onnx",
+  "embeddingModel": "C:\\EDITH\\models\\wake\\custom\\embedding_model.onnx",
+  "threshold": 0.70,
+  "verifierThreshold": 0.75,
+  "minConsecutiveHits": 2,
+  "cooldownMs": 850,
+  "fallbackToVosk": true
+}
