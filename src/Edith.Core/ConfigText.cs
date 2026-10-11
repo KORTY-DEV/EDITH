@@ -59,6 +59,8 @@ public static class ConfigText
     private static Match? Find(string json, string keyPath)
     {
         int start = 0;
+        // A key mentioned in a comment line ("// \"enabled\": false by default") is not the key: blank comments out, keeping every index.
+        json = Regex.Replace(json, @"(?m)^[ 	]*//.*$", m => new string(' ', m.Length));
         string[] keys = keyPath.Split('.');
         for (int i = 0; i < keys.Length; i++)
         {

@@ -320,17 +320,6 @@ public sealed class FileOps
         }
     }
 
-    private static List<FileBatch> Load(string? path)
-    {
-        try
-        {
-            return path is not null && File.Exists(path)
-                ? JsonSerializer.Deserialize<List<FileBatch>>(File.ReadAllText(path)) ?? []
-                : [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
+    private static List<FileBatch> Load(string? path) =>
+        Edith.Core.SafeJsonFile.Load<List<FileBatch>>(path, () => []);
 }

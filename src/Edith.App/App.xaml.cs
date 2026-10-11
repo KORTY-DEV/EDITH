@@ -1680,6 +1680,7 @@ public partial class App : Application
             return;
 
         CancelCommandTimeout();
+        Dispatcher.BeginInvoke(() => Answers().NoteQuestion());
 
         _interrupt?
             .StopListening();

@@ -31,3 +31,16 @@ public sealed class ConversationConfigTests
         Assert.Equal(TimeSpan.FromSeconds(6), new ConversationSettings().SpeechStartTimeout);
     }
 }
+
+public sealed class ConfigTextCommentTests
+{
+    [Fact]
+    public void KeysInsideCommentLines_AreNotTheKeys()
+    {
+        string json = "{\n  // \"enabled\": false — по умолчанию\n  \"enabled\": true\n}";
+        Assert.Equal("true", ConfigText.Get(json, "enabled"));
+        string changed = ConfigText.Set(json, "enabled", false);
+        Assert.Contains("// \"enabled\": false — по умолчанию", changed);
+        Assert.Equal("false", ConfigText.Get(changed, "enabled"));
+    }
+}

@@ -38,6 +38,11 @@ public sealed class AnswerWindow : Window
     private string _lastQuestion = "", _lastAnswer = "";
     private DateTime _imageStamp = DateTime.MinValue;
     private bool _hasImage;
+    private int _turn;
+    private int _imageTurn = -1;
+
+    /// <summary>A new question was heard: pictures that arrive from now on belong to it.</summary>
+    public void NoteQuestion() => _turn++;
 
     /// <summary>How long the finished answer stays (seconds); quiet mode needs longer: it is the only reply.</summary>
     public Func<double> HoldSeconds { get; set; } = () => 5;
@@ -202,8 +207,8 @@ public sealed class AnswerWindow : Window
         _shown = 0;
         _answer.Text = "";
 
-        // A picture that came with this question stays; an old one goes.
-        if (DateTime.Now - _imageStamp > TimeSpan.FromSeconds(45))
+        // A picture that came with this question stays; the picture of an earlier question goes (it once stayed under "Убрала." and the weather).
+        if (_imageTurn != _turn || DateTime.Now - _imageStamp > TimeSpan.FromSeconds(45))
             ClearImage();
 
         Reveal();
@@ -213,6 +218,7 @@ public sealed class AnswerWindow : Window
     /// <summary>A picture under the text (shown at once, also when no answer text follows).</summary>
     public void ShowImage(byte[] bytes, string caption)
     {
+        _imageTurn = _turn;
         try
         {
             var bitmap = new BitmapImage();
@@ -271,6 +277,7 @@ public sealed class AnswerWindow : Window
             return false;
 
         _imageStamp = DateTime.Now; // keep the picture of that answer
+        _imageTurn = _turn;
         ShowAnswer(_lastQuestion, _lastAnswer);
         return true;
     }

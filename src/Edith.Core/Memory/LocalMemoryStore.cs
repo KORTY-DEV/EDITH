@@ -81,8 +81,7 @@ public sealed class LocalMemoryStore : IMemoryStore
     private List<MemoryItem> Load()
     {
         if (_items is not null) return _items;
-        try { _items = File.Exists(_path) ? JsonSerializer.Deserialize<List<MemoryItem>>(File.ReadAllText(_path)) ?? [] : []; }
-        catch { _items = []; }
+        _items = SafeJsonFile.Load<List<MemoryItem>>(_path, () => []);
         return _items;
     }
 

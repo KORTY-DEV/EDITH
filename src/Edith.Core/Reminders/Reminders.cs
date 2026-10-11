@@ -315,17 +315,6 @@ public sealed class ReminderScheduler
         }
     }
 
-    private static List<Reminder> Load(string? path)
-    {
-        try
-        {
-            return path is not null && File.Exists(path)
-                ? JsonSerializer.Deserialize<List<Reminder>>(File.ReadAllText(path)) ?? []
-                : [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
+    private static List<Reminder> Load(string? path) =>
+        Edith.Core.SafeJsonFile.Load<List<Reminder>>(path, () => []);
 }

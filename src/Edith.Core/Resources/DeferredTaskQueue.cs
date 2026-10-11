@@ -113,17 +113,6 @@ public sealed class DeferredTaskQueue
         }
     }
 
-    private static List<DeferredTask> Load(string? path)
-    {
-        try
-        {
-            return path is not null && File.Exists(path)
-                ? JsonSerializer.Deserialize<List<DeferredTask>>(File.ReadAllText(path)) ?? []
-                : [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
+    private static List<DeferredTask> Load(string? path) =>
+        Edith.Core.SafeJsonFile.Load<List<DeferredTask>>(path, () => []);
 }

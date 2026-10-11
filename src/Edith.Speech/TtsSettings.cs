@@ -56,7 +56,7 @@ public static class TtsSettingsLoader
         {
             if (File.Exists(path))
             {
-                settings = JsonSerializer.Deserialize<TtsSettings>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new TtsSettings();
+                settings = JsonSerializer.Deserialize<TtsSettings>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) ?? new TtsSettings();
             }
         }
         catch
