@@ -739,11 +739,7 @@ public sealed class ResponseEngine
         // REFLEX / PERSONALITY
         // ====================================================
 
-        if (ContainsAny(
-                command,
-                "привет",
-                "доброе утро",
-                "добрый вечер"))
+        if (IsGreeting(command))
         {
             string greeting = PersonaPrompt.Greeting(DateTimeOffset.Now, Address());
             return PulseService.Instance?.TakeBrief() is { Length: > 0 } dayBrief ? greeting + " " + dayBrief : greeting;
@@ -1542,6 +1538,11 @@ public sealed class ResponseEngine
     // ========================================================
     // HELPERS
     // ========================================================
+
+    /// <summary>A short phrase that is a greeting; "как мне поприветствовать тёщу" is a question, not a hello (it once got the morning brief).</summary>
+    public static bool IsGreeting(string command) =>
+        command.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 5 &&
+        System.Text.RegularExpressions.Regex.IsMatch(command, @"(?<![\p{L}])(привет|здравствуй(те)?|доброе утро|добрый (день|вечер)|добрый)(?![\p{L}])", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     private static bool ContainsAny(
         string value,

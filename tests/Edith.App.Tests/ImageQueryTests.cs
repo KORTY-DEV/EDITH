@@ -68,3 +68,17 @@ public sealed class HideWindowPhraseTests
         }
     }
 }
+
+public sealed class GreetingTests
+{
+    [Theory]
+    [InlineData("привет", true)]
+    [InlineData("эдит привет", true)]
+    [InlineData("добрый вечер", true)]
+    [InlineData("доброе утро эдит", true)]
+    [InlineData("что мне сказать теще чтобы ей понравилось как мне ее поприветствовать какие комплименты ей сказать", false)]
+    [InlineData("как мне поприветствовать гостей", false)]
+    [InlineData("расскажи как приветствовать клиента на встрече", false)]
+    public void OnlyShortHellosAreGreetings(string phrase, bool expected) =>
+        Assert.Equal(expected, Edith.App.ResponseEngine.IsGreeting(phrase));
+}

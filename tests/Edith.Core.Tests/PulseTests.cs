@@ -118,9 +118,9 @@ public sealed class PulseTests : IDisposable
         string brief = PulseBuilder.Brief([Repo("EDITH", 1, subject: "Voice pauses")], usage, _now, newCards: 2);
 
         Assert.Contains("EDITH", brief);
-        Assert.Contains("вчера", brief);
+        Assert.Contains("Вчера", brief);
         Assert.Contains("World of Tanks", brief);
-        Assert.Contains("новых заметок: 2", brief);
+        Assert.Contains("Новых заметок: 2", brief);
         Assert.Equal("", PulseBuilder.Brief([], [], _now, 0));
     }
 

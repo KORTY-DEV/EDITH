@@ -117,7 +117,7 @@ public static class PulseBuilder
         if (newCards > 0)
             parts.Add(newCards == 1 ? "есть одна новая заметка" : $"новых заметок: {newCards}");
 
-        return parts.Count == 0 ? "" : string.Join(". ", parts) + ".";
+        return parts.Count == 0 ? "" : string.Join(". ", parts.Select(p => char.ToUpperInvariant(p[0]) + p[1..])) + ".";
     }
 
     /// <summary>A line for the brain's context: what the owner works on and how the evenings go.</summary>
