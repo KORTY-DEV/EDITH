@@ -38,7 +38,8 @@ public static class SpokenNumbers
     private static readonly Regex Number = new(@"(?<![\p{L}\d.,])(?<n>\d{1,3}(?:[  ]\d{3})+|\d+)(?:[.,](?<f>\d{1,2}))?(?![\d\p{L}]|:\d)(?<next>\s+\p{L}+)?", RegexOptions.Compiled);
 
     private static readonly Regex Grouped = new(@"(?<![\p{L}\d.,])(?<n>\d{1,3}(?:[   ]\d{3})+)(?![\d])", RegexOptions.Compiled);
-    private static readonly Regex NumericDate = new(@"(?<![\d.])(?<d>0?[1-9]|[12]\d|3[01])\.(?<m>0?[1-9]|1[0-2])\.(?<y>(?:19|20)\d{2})(?![\d.])", RegexOptions.Compiled);
+    private static readonly Regex NumericDate = new(@"(?<![\d.])(?<d>0?[1-9]|[12]\d|3[01])[./](?<m>0?[1-9]|1[0-2])[./](?<y>(?:19|20)\d{2})(?!\d|\.\d)", RegexOptions.Compiled);
+    private static readonly Regex Version = new(@"(?<![\p{L}\d.,])(?<v>\d+(?:\.\d+){2,})(?!\d|\.\d)", RegexOptions.Compiled);
     private static readonly Regex Decade = new(@"(?<![\p{L}\d.,])(?<y>(?:19|20)\d0)-х(?![\p{L}])", RegexOptions.Compiled);
     private static readonly Regex OrdinalSuffix = new(@"(?<![\p{L}\d.,])(?<n>\d{1,2})-(?<s>й|го|м)(?![\p{L}])", RegexOptions.Compiled);
     private static readonly Regex SignedPlain = new(@"(?<=^|[\s(])(?<sign>[+\-−])(?<n>\d+(?:[.,]\d+)?)(?![\d\p{L}\-])", RegexOptions.Compiled);
@@ -46,6 +47,8 @@ public static class SpokenNumbers
 
     private static readonly Regex GpuModel = new(@"(?<![\p{L}])(?<p>RTX|GTX|RX|GT)\s+(?<a>[1-9]\d)(?<b>\d{2})(?![\d])", RegexOptions.Compiled);
     private static readonly Regex DigitsLetters = new(@"(?<![\p{L}\d.,])(?<n>\d{1,4})(?<l>[A-Za-z]{1,3})(?![\p{L}\d])", RegexOptions.Compiled);
+
+    private static readonly Regex Fraction = new(@"(?<![\d/.,\p{L}])(?<a>[1-3])/(?<b>[2-4])(?![\d/.,])", RegexOptions.Compiled);
 
     public static string Apply(string text)
     {
@@ -58,6 +61,9 @@ public static class SpokenNumbers
         text = NumericDate.Replace(text, m =>
             Ordinal(int.Parse(m.Groups["d"].Value), "gen") + " " + MonthsGenitive[int.Parse(m.Groups["m"].Value) - 1] + " " +
             YearWords(int.Parse(m.Groups["y"].Value), "gen") + " года");
+
+        // "1.0.7" is a version: the dots are said.
+        text = Version.Replace(text, m => string.Join(" точка ", m.Groups["v"].Value.Split('.').Select(part => Cardinal(long.Parse(part), false))));
 
         text = Decade.Replace(text, m =>
         {
@@ -121,6 +127,16 @@ public static class SpokenNumbers
                 _ => Plural(whole, "мегагерц", "мегагерца", "мегагерц"),
             };
             return Decimal(m.Groups["n"].Value) + " " + word;
+        });
+
+        text = Fraction.Replace(text, m => (m.Groups["a"].Value + "/" + m.Groups["b"].Value) switch
+        {
+            "1/2" => "одна вторая",
+            "1/3" => "одна треть",
+            "2/3" => "две трети",
+            "1/4" => "одна четверть",
+            "3/4" => "три четверти",
+            _ => m.Value,
         });
 
         // Video cards are said in pairs: "RTX 5090" is "пятьдесят девяносто", not "пять тысяч девяносто".

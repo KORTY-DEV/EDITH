@@ -22,6 +22,9 @@ public sealed class SpokenNumbersEdgeTests
     [InlineData("RTX 5090", "RTX пятьдесят девяносто")]
     [InlineData("GTX 1070 Ti", "GTX десять семьдесят Ti")]
     [InlineData("8b модель", "восемь b модель")]
+    [InlineData("выпей 1/2 стакана", "выпей одна вторая стакана")]
+    [InlineData("осталось 3/4 заряда", "осталось три четверти заряда")]
+    [InlineData("дата 1/2/2026", "дата первого февраля две тысячи двадцать шестого года")]
     public void VideoCardsAndModelLetters(string written, string spoken) => Assert.Equal(spoken, SpokenNumbers.Apply(written));
 
     [Theory]

@@ -8,6 +8,9 @@ internal static class TestEnvironment
     [ModuleInitializer]
     internal static void KeepCloudOff()
     {
+        // As the app does at start: the speech layer's richer number rules.
+        Edith.Core.Brain.VoiceText.NumberWords = Edith.Speech.SpokenNumbers.Apply;
+
         if (Environment.GetEnvironmentVariable("EDITH_CLOUD_CONFIG") is not { Length: > 0 })
             Environment.SetEnvironmentVariable("EDITH_CLOUD_CONFIG", Path.Combine(Path.GetTempPath(), "edith-tests-no-cloud.json"));
 

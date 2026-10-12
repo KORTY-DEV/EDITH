@@ -228,6 +228,7 @@ public partial class App : Application
 
         // Meaning search (notes, memory): the model loads in the background; until then, words only.
         Edith.Core.Memory.EmbeddingService.Provider = () => s_embedder;
+        Edith.Core.Brain.VoiceText.NumberWords = Edith.Speech.SpokenNumbers.Apply;
         _ = Task.Run(() => s_embedder = Edith.Audio.Embedding.E5Embedder.TryCreate(@"C:\EDITH\models\embedding"));
         // The warm-up uses the real persona, so its cached prompt prefix serves the first question.
         BrainService.Shared.DefaultPersonaSource = _response.PersonaPromptForBrain();

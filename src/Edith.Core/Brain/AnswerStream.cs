@@ -21,6 +21,9 @@ public sealed class SentenceSplitter
 {
     public const int MinSentenceChars = 24;
 
+    private static readonly HashSet<string> Abbreviations =
+        ["тыс", "млн", "млрд", "руб", "коп", "кв", "ул", "им", "см", "рис", "стр", "табл", "напр", "проч", "обл", "экз", "пос", "англ", "нем", "франц"];
+
     private readonly StringBuilder _buffer = new();
 
     /// <summary>Adds text; returns the sentences that are complete now.</summary>
@@ -48,7 +51,7 @@ public sealed class SentenceSplitter
                 int wordStart = i;
                 while (wordStart > start && char.IsLetter(all[wordStart - 1]))
                     wordStart--;
-                if (i - wordStart is >= 1 and <= 2)
+                if (i - wordStart is >= 1 and <= 2 || Abbreviations.Contains(all[wordStart..i].ToLowerInvariant()))
                     continue;
             }
 

@@ -15,7 +15,7 @@ public static class SpokenTime
 
     /// <summary>"[сегодня|завтра|послезавтра] в HH[:MM] [часов]".</summary>
     public const string AtPattern =
-        @"(?:(?<day>сегодня|завтра|послезавтра)\s+)?в\s+(?<h>\d{1,2})(?:[:.\s](?<m>\d{2}))?(?:\s+(?:часов|часа|час)\b)?(?:\s+(?<part>утра|дня|вечера|ночи))?";
+        @"(?:(?<day>сегодня|завтра|послезавтра)\s+)?в\s+(?:(?<special>полночь|полдень)|(?<h>\d{1,2})(?:[:.\s](?<m>\d{2}))?(?:\s+(?:часов|часа|час)\b)?(?:\s+(?<part>утра|дня|вечера|ночи))?)";
 
     private static readonly Dictionary<string, double> Numbers = new()
     {
@@ -83,7 +83,10 @@ public static class SpokenTime
     public static bool TryAt(Match match, DateTimeOffset now, out DateTimeOffset at)
     {
         at = default;
-        if (!int.TryParse(match.Groups["h"].Value, out int hour) || hour is < 0 or > 23)
+        int hour;
+        if (match.Groups["special"].Success)
+            hour = match.Groups["special"].Value == "полночь" ? 0 : 12;
+        else if (!int.TryParse(match.Groups["h"].Value, out hour) || hour is < 0 or > 23)
             return false;
 
         int minute = match.Groups["m"].Success ? int.Parse(match.Groups["m"].Value, CultureInfo.InvariantCulture) : 0;

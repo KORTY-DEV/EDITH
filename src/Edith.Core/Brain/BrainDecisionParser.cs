@@ -168,19 +168,68 @@ public static class BrainDecisionParser
 /// <summary>Makes a model reply fit for TTS: no markdown, one short paragraph.</summary>
 public static class VoiceText
 {
+    /// <summary>
+    /// Digits to words with the richer rules of the speech layer (dates, signs, video cards, fractions); set by the app at start.
+    /// The plain <see cref="RussianNumbers"/> still runs after it as a safety net for whatever digits are left.
+    /// </summary>
+    public static Func<string, string> NumberWords { get; set; } = t => t;
+
+    private static readonly (string Pattern, string Spoken)[] Abbreviations =
+    [
+        (@"(?<![\p{L}])и\s+т\.\s?д\.", "и так далее"),
+        (@"(?<![\p{L}])и\s+т\.\s?п\.", "и тому подобное"),
+        (@"(?<![\p{L}])т\.\s?е\.", "то есть"),
+        (@"(?<![\p{L}])т\.\s?к\.", "так как"),
+        (@"(?<![\p{L}])т\.\s?д\.", "так далее"),
+        (@"(?<=\d)\s*тыс\.?(?![\p{L}])", " тысяч"),
+        (@"(?<=\d)\s*млн\.?(?![\p{L}])", " миллионов"),
+        (@"(?<=\d)\s*млрд\.?(?![\p{L}])", " миллиардов"),
+        (@"(?<![\p{L}])руб\.", "рублей"),
+    ];
+
+    private static string Units(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text, @"(?<![\d.,])(?<n>\d+)\s*(?<u>км/ч|м/с|(?:тыс|млн|млрд)\.?)(?![\p{L}])", m =>
+        {
+            long n = long.TryParse(m.Groups["n"].Value, out long v) ? v : 0;
+            string words = m.Groups["u"].Value.TrimEnd('.') switch
+            {
+                "км/ч" => RussianNumbers.Plural(n, "километр", "километра", "километров") + " в час",
+                "м/с" => RussianNumbers.Plural(n, "метр", "метра", "метров") + " в секунду",
+                "тыс" => RussianNumbers.Plural(n, "тысяча", "тысячи", "тысяч"),
+                "млн" => RussianNumbers.Plural(n, "миллион", "миллиона", "миллионов"),
+                _ => RussianNumbers.Plural(n, "миллиард", "миллиарда", "миллиардов"),
+            };
+            return m.Groups["n"].Value + " " + words;
+        });
+
     public static string ForSpeech(string text, int maxChars = 900)
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
 
+        var rx = System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+        string cleaned = ReplyPolish.Apply(text);
+        // Reasoning tags and code are not for the ear.
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"<think>.*?</think>", " ", System.Text.RegularExpressions.RegexOptions.Singleline | rx);
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"```.*?```", " ", System.Text.RegularExpressions.RegexOptions.Singleline);
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"</?[A-Za-z][^>]*>", " ");
+        // "[здесь](https://...)" keeps its words.
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\[([^\]]+)\]\((?:https?://|www\.)[^)\s]*\)", "$1", rx);
         // URLs and raw JSON are useful to a UI, but are noise when spoken.
-        string cleaned = System.Text.RegularExpressions.Regex.Replace(
-            ReplyPolish.Apply(text), @"(?:https?://|www\.)\S+", " ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"(?:https?://|www\.)\S+", " ", rx);
         cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\{[^{}]*\}", " ");
         cleaned = cleaned.Replace("{", " ").Replace("}", " ").Replace("\"", " ");
-        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\b(?:type|text|answer|source|url)\s*:\s*", " ", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        // List markers go before numbers become words ("1. пункт" must not turn into "один. пункт").
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\b(?:type|text|answer|source|url)\s*:\s*", " ", rx);
+        // Emoji and pictographs: the voice would skip or stumble on them.
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"[\uD800-\uDBFF][\uDC00-\uDFFF]|[\u2190-\u21FF\u2300-\u23FF\u2600-\u27BF\u2B00-\u2BFF\uFE00-\uFE0F\u200D]", " ");
+        // List markers go before numbers become words ("1. пункт" must not turn into "один. пункт"); each item becomes a sentence.
         cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"(?m)^\s*(?:[-•]|\d+[.)])\s+", "");
-        return Sanitize(RussianNumbers.Verbalize(SpeechNormalizer.Normalize(cleaned)), maxChars);
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"(?<=[\p{L}\d\)])[ \t]*\r?\n+(?=\s*\S)", ". ");
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\s+([!?.,;:…])", "$1");
+        cleaned = Units(cleaned);
+        foreach ((string pattern, string spoken) in Abbreviations)
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, pattern, spoken, rx);
+
+        return Sanitize(RussianNumbers.Verbalize(SpeechNormalizer.Normalize(NumberWords(cleaned))), maxChars);
     }
 
     public static string Sanitize(string text, int maxChars = 700)
@@ -194,7 +243,13 @@ public static class VoiceText
 
         foreach (char c in text)
         {
-            if (c is '*' or '`' or '#' or '_' or '~' or '|')
+            if (c == '_')
+            {
+                sb.Append(' '); // snake_case is two words, _emphasis_ costs a space
+                continue;
+            }
+
+            if (c is '*' or '`' or '#' or '~' or '|')
             {
                 continue;
             }
