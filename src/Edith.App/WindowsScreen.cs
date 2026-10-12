@@ -305,7 +305,7 @@ public sealed class WindowsScreen : IScreen
     }
 
     /// <summary>Whole-monitor picture(s) as JPEG with a spoken name, for the picture-describing model.</summary>
-    public static IReadOnlyList<(string Name, byte[] Png, byte[] Jpeg)> CaptureMonitors(ScreenTarget target)
+    public static IReadOnlyList<(string Name, byte[] Png, byte[] Jpeg)> CaptureMonitors(ScreenTarget target, string region = "")
     {
         IReadOnlyList<MonitorInfo> all = Monitors();
         MonitorInfo? mine = CursorMonitor();
@@ -320,11 +320,88 @@ public sealed class WindowsScreen : IScreen
         foreach (MonitorInfo monitor in chosen)
         {
             byte[]? png = CaptureRectPng(monitor.Left, monitor.Top, monitor.Width, monitor.Height);
-            if (png is not null)
-                result.Add((monitor.Name, png, ToJpeg(png, 1600, 75)));
+            if (png is null)
+                continue;
+
+            // A part of the screen is cut at full resolution first: small print on a dense page becomes readable.
+            png = Crop(png, region);
+            result.Add((region.Length > 0 ? monitor.Name + " (" + RegionName(region) + ")" : monitor.Name, png, ToJpeg(png, 2000, 85)));
         }
 
         return result;
+    }
+
+    private static string RegionName(string region) => region switch
+    {
+        "left" => "левая половина", "right" => "правая половина", "top" => "верхняя половина", "bottom" => "нижняя половина", "center" => "центр",
+        "top-left" => "верхний левый угол", "top-right" => "верхний правый угол", "bottom-left" => "нижний левый угол", "bottom-right" => "нижний правый угол",
+        _ => region,
+    };
+
+    /// <summary>"left", "bottom-right", "center"… → that part of the picture, as PNG; unknown or empty → the whole picture.</summary>
+    public static byte[] Crop(byte[] png, string region)
+    {
+        (double x, double y, double w, double h)? part = region switch
+        {
+            "left" => (0, 0, 0.5, 1), "right" => (0.5, 0, 0.5, 1), "top" => (0, 0, 1, 0.5), "bottom" => (0, 0.5, 1, 0.5),
+            "center" => (0.2, 0.2, 0.6, 0.6),
+            "top-left" => (0, 0, 0.5, 0.5), "top-right" => (0.5, 0, 0.5, 0.5), "bottom-left" => (0, 0.5, 0.5, 0.5), "bottom-right" => (0.5, 0.5, 0.5, 0.5),
+            _ => null,
+        };
+        if (part is null)
+            return png;
+
+        using var input = new MemoryStream(png);
+        BitmapSource frame = BitmapDecoder.Create(input, BitmapCreateOptions.None, BitmapCacheOption.OnLoad).Frames[0];
+        var rect = new System.Windows.Int32Rect(
+            (int)(frame.PixelWidth * part.Value.x), (int)(frame.PixelHeight * part.Value.y),
+            (int)(frame.PixelWidth * part.Value.w), (int)(frame.PixelHeight * part.Value.h));
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(new CroppedBitmap(frame, rect)));
+        using var output = new MemoryStream();
+        encoder.Save(output);
+        return output.ToArray();
+    }
+
+    /// <summary>The visible windows on a monitor, topmost first, as "program — title": exact names for the model, free of guessing.</summary>
+    public static IReadOnlyList<string> WindowsOn(MonitorInfo monitor, int limit = 6)
+    {
+        var found = new List<string>();
+        uint self = (uint)Environment.ProcessId;
+        EnumWindows((hWnd, _) =>
+        {
+            if (found.Count >= limit || !IsWindowVisible(hWnd) || IsIconic(hWnd))
+                return true;
+
+            var title = new StringBuilder(512);
+            GetWindowText(hWnd, title, title.Capacity);
+            if (title.Length == 0 || !GetWindowRect(hWnd, out Rect r))
+                return true;
+
+            int cloaked = 0;
+            DwmGetWindowAttribute(hWnd, 14 /* DWMWA_CLOAKED */, out cloaked, sizeof(int));
+            if (cloaked != 0)
+                return true;
+
+            GetWindowThreadProcessId(hWnd, out uint pid);
+            if (pid == self)
+                return true;
+
+            int overlapW = Math.Min(r.Right, monitor.Left + monitor.Width) - Math.Max(r.Left, monitor.Left);
+            int overlapH = Math.Min(r.Bottom, monitor.Top + monitor.Height) - Math.Max(r.Top, monitor.Top);
+            if (overlapW <= 0 || overlapH <= 0 || (long)overlapW * overlapH < (long)monitor.Width * monitor.Height / 8)
+                return true; // a sliver or a tool window is not "what is on the screen"
+
+            string program = "";
+            try { program = Process.GetProcessById((int)pid).ProcessName; } catch { }
+            string name = title.ToString();
+            if (name is "Program Manager" or "Settings" || program is "TextInputHost" or "ShellExperienceHost" or "SearchHost")
+                return true;
+
+            found.Add(program.Length > 0 ? $"{program} — «{(name.Length > 120 ? name[..120] + "…" : name)}»" : $"«{name}»");
+            return true;
+        }, IntPtr.Zero);
+        return found;
     }
 
     private static byte[] ToJpeg(byte[] png, int maxSide, int quality)
@@ -420,6 +497,11 @@ public sealed class WindowsScreen : IScreen
     }
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr hWnd, int attribute, out int value, int size);
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
     private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr dc, ref Rect rect, IntPtr data);
     [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonitorEnumProc callback, IntPtr data);

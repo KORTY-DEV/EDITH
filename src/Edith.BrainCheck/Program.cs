@@ -162,7 +162,11 @@ internal static class Program
 
             if (rest.Contains("describe"))
             {
-                var mine = Edith.App.WindowsScreen.CaptureMonitors(Edith.App.WindowsScreen.ScreenTarget.Cursor).First();
+                string region = rest.SkipWhile(a => a != "describe").Skip(1).FirstOrDefault() ?? "";
+                var mine = Edith.App.WindowsScreen.CaptureMonitors(Edith.App.WindowsScreen.ScreenTarget.Cursor, region).First();
+                File.WriteAllBytes(Path.Combine(dir, "described.jpg"), mine.Jpeg);
+                var onScreen = Edith.App.WindowsScreen.WindowsOn(Edith.App.WindowsScreen.CursorMonitor()!);
+                Console.WriteLine("windows: " + string.Join(" | ", onScreen));
                 string seen = await Edith.App.WindowsScreen.OcrPngAsync(mine.Png, CancellationToken.None);
                 Console.WriteLine("ocr chars: " + seen.Length);
                 Console.WriteLine(await GigaChatClient.Shared.DescribeImageAsync(CloudSettings.Load(), mine.Jpeg,

@@ -1009,7 +1009,8 @@ public sealed class BrainToolRouter
         }
 
         // "Мой экран" is the monitor the owner works on (where the mouse is), not whatever window happens to hold the keyboard focus.
-        var shots = await Task.Run(() => WindowsScreen.CaptureMonitors(target), cancellationToken);
+        string region = GetString(arguments, "region").Trim().ToLowerInvariant();
+        var shots = await Task.Run(() => WindowsScreen.CaptureMonitors(target, region), cancellationToken);
         if (shots.Count == 0)
             return "Не получилось снять экран.";
 
@@ -1024,10 +1025,20 @@ public sealed class BrainToolRouter
             {
             }
 
-            string ask = (question.Length > 0 ? question : "Опиши, что показано на экране: какая программа или сайт, что главное.") +
-                         (seen.Length > 0 ? " Текст с экрана, прочитанный распознаванием (возможны ошибки, но названия и цены в нём точнее, чем на глаз): " + (seen.Length > 1500 ? seen[..1500] : seen) : "");
+            // Exact names of the windows there (program and title, the open tab included): no guessing from pixels.
+            WindowsScreen.MonitorInfo? monitor = WindowsScreen.Monitors().FirstOrDefault(m => shot.Name.StartsWith(m.Name, StringComparison.Ordinal));
+            IReadOnlyList<string> windows = monitor is null ? [] : WindowsScreen.WindowsOn(monitor);
+            string windowsLine = windows.Count == 0 ? ""
+                : "Поверх всего, то есть на экране виден: " + windows[0] + "." + (windows.Count > 1 ? " Под ним открыты (могут быть закрыты им и не видны): " + string.Join("; ", windows.Skip(1)) + "." : "");
+
+            string ask = (question.Length > 0 ? question : "Опиши, что показано на экране: какая программа или сайт, что главное, какие конкретно товары, цифры, заголовки.") + " " + windowsLine +
+                         (seen.Length > 0 ? " Текст с экрана, прочитанный распознаванием (возможны мелкие ошибки, но названия, цены и числа в нём точнее, чем на глаз): " + (seen.Length > 2000 ? seen[..2000] : seen) : "") +
+                         " Называй только то, что действительно видно или есть в тексте; если чего-то не разобрать — так и скажи.";
             string answer = await GigaChatClient.Shared.DescribeImageAsync(cloud, shot.Jpeg, ask, cancellationToken);
-            return shots.Count > 1 ? $"{shot.Name}: {answer}" : answer;
+
+            // The recognised text stays in the result: a follow-up ("а сколько стоит вторая?") is answered from it, not from memory.
+            string extra = (windowsLine.Length > 0 ? " " + windowsLine : "") + (seen.Length > 0 ? " Текст экрана (распознавание): " + (seen.Length > 2500 ? seen[..2500] : seen) : "");
+            return (shots.Count > 1 || region.Length > 0 ? $"{shot.Name}: " : "") + answer + extra;
         }));
 
         string where = shots.Count > 1 ? "Описание экранов" : "Описание экрана";
