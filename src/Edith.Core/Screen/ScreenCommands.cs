@@ -35,8 +35,10 @@ public sealed record ScreenCommand(ScreenCommandKind Kind, string Argument = "")
 
 public static class ScreenCommandParser
 {
+    // "что на экране" / "посмотри на экран" are not here on purpose: with two monitors the window holding the focus is often not what the owner
+    // looks at, so those go to the brain, which describes the monitor under the mouse (describe_screen).
     private static readonly Regex Read = new(
-        @"^(?:что (?:у меня )?(?:на экране|в (?:этом |активном )?окне|открыто)|прочитай (?:(?:что )?(?:на экране|в окне|окно|ошибку|сообщение|текст на экране))|что (?:там )?написано(?: на экране| в окне)?|что за ошибка|посмотри на экран)$",
+        @"^(?:что (?:у меня )?(?:в (?:этом |активном )?окне|открыто)|прочитай (?:(?:что )?(?:на экране|в окне|окно|ошибку|сообщение|текст на экране))|что (?:там )?написано(?: на экране| в окне)?|что за ошибка)$",
         RegexOptions.Compiled);
 
     private static readonly Regex Click = new(

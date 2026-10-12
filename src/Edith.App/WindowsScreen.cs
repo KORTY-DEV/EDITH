@@ -268,13 +268,94 @@ public sealed class WindowsScreen : IScreen
         return output.ToArray();
     }
 
+    /// <summary>What to look at: the monitor under the mouse, the other monitor(s), all of them, or the foreground window.</summary>
+    public enum ScreenTarget { Cursor, Other, All, Window }
+
+    /// <summary>One monitor: where it is and what to call it aloud.</summary>
+    public sealed record MonitorInfo(int Left, int Top, int Width, int Height, bool Primary, string Name);
+
+    /// <summary>Monitors from left to right, named for speech ("левый монитор", "правый монитор", "монитор 3").</summary>
+    public static IReadOnlyList<MonitorInfo> Monitors()
+    {
+        var found = new List<(Rect Rect, bool Primary)>();
+        MonitorEnumProc callback = (IntPtr monitor, IntPtr dc, ref Rect rect, IntPtr data) =>
+        {
+            var info = new MonitorInfoEx { Size = Marshal.SizeOf<MonitorInfoEx>() };
+            found.Add((rect, GetMonitorInfo(monitor, ref info) && (info.Flags & 1) != 0));
+            return true;
+        };
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, callback, IntPtr.Zero);
+        GC.KeepAlive(callback);
+
+        var ordered = found.OrderBy(m => m.Rect.Left).ThenBy(m => m.Rect.Top).ToList();
+        return ordered.Select((m, i) => new MonitorInfo(m.Rect.Left, m.Rect.Top, m.Rect.Right - m.Rect.Left, m.Rect.Bottom - m.Rect.Top, m.Primary,
+            ordered.Count == 1 ? "экран"
+            : ordered.Count == 2 ? (i == 0 ? "левый монитор" : "правый монитор")
+            : $"монитор {i + 1}")).ToList();
+    }
+
+    /// <summary>The monitor the mouse pointer is on (where the owner is working), or the primary one.</summary>
+    public static MonitorInfo? CursorMonitor()
+    {
+        IReadOnlyList<MonitorInfo> all = Monitors();
+        if (!GetCursorPos(out Point point))
+            return all.FirstOrDefault(m => m.Primary) ?? all.FirstOrDefault();
+        return all.FirstOrDefault(m => point.X >= m.Left && point.X < m.Left + m.Width && point.Y >= m.Top && point.Y < m.Top + m.Height)
+               ?? all.FirstOrDefault(m => m.Primary) ?? all.FirstOrDefault();
+    }
+
+    /// <summary>Whole-monitor picture(s) as JPEG with a spoken name, for the picture-describing model.</summary>
+    public static IReadOnlyList<(string Name, byte[] Png, byte[] Jpeg)> CaptureMonitors(ScreenTarget target)
+    {
+        IReadOnlyList<MonitorInfo> all = Monitors();
+        MonitorInfo? mine = CursorMonitor();
+        IEnumerable<MonitorInfo> chosen = target switch
+        {
+            ScreenTarget.All => all,
+            ScreenTarget.Other => all.Where(m => m != mine),
+            _ => mine is null ? [] : [mine],
+        };
+
+        var result = new List<(string, byte[], byte[])>();
+        foreach (MonitorInfo monitor in chosen)
+        {
+            byte[]? png = CaptureRectPng(monitor.Left, monitor.Top, monitor.Width, monitor.Height);
+            if (png is not null)
+                result.Add((monitor.Name, png, ToJpeg(png, 1600, 75)));
+        }
+
+        return result;
+    }
+
+    private static byte[] ToJpeg(byte[] png, int maxSide, int quality)
+    {
+        using var input = new MemoryStream(png);
+        BitmapDecoder decoder = BitmapDecoder.Create(input, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+        BitmapSource frame = decoder.Frames[0];
+        double scale = Math.Min(1.0, (double)maxSide / Math.Max(frame.PixelWidth, frame.PixelHeight));
+        if (scale < 1.0)
+            frame = new TransformedBitmap(frame, new System.Windows.Media.ScaleTransform(scale, scale));
+
+        var encoder = new JpegBitmapEncoder { QualityLevel = quality };
+        encoder.Frames.Add(BitmapFrame.Create(frame));
+        using var output = new MemoryStream();
+        encoder.Save(output);
+        return output.ToArray();
+    }
+
     private static byte[]? CaptureWindowPng(IntPtr window)
     {
         if (!GetWindowRect(window, out Rect rect))
             return null;
 
-        int width = Math.Max(0, rect.Right - rect.Left);
-        int height = Math.Max(0, rect.Bottom - rect.Top);
+        return CaptureRectPng(rect.Left, rect.Top, Math.Max(0, rect.Right - rect.Left), Math.Max(0, rect.Bottom - rect.Top));
+    }
+
+    private static byte[]? CaptureRectPng(int left, int top, int width, int height)
+    {
+        Rect rect = new() { Left = left, Top = top, Right = left + width, Bottom = top + height };
+        width = Math.Max(0, width);
+        height = Math.Max(0, height);
         if (width < 16 || height < 16)
             return null;
 
@@ -339,6 +420,23 @@ public sealed class WindowsScreen : IScreen
     }
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
+    private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr dc, ref Rect rect, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfoEx info);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point { public int X, Y; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MonitorInfoEx
+    {
+        public int Size;
+        public Rect Monitor;
+        public Rect Work;
+        public uint Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string Device;
+    }
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out Rect rect);

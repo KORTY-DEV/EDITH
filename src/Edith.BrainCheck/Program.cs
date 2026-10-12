@@ -143,6 +143,35 @@ internal static class Program
             return weak == 0 ? 0 : 3;
         }
 
+        // --screen-check DIR [describe]: the monitors as EDITH sees them (saved as pictures); with "describe" the cloud tells what is on the one under the mouse.
+        if (args.Contains("--screen-check"))
+        {
+            string[] rest = args.SkipWhile(a => a != "--screen-check").Skip(1).ToArray();
+            string dir = rest[0];
+            Directory.CreateDirectory(dir);
+            foreach (var m in Edith.App.WindowsScreen.Monitors())
+                Console.WriteLine($"monitor {m.Name}: {m.Width}x{m.Height} at {m.Left},{m.Top}{(m.Primary ? " (primary)" : "")}");
+            Console.WriteLine("under the mouse: " + Edith.App.WindowsScreen.CursorMonitor()?.Name);
+            var shots = Edith.App.WindowsScreen.CaptureMonitors(Edith.App.WindowsScreen.ScreenTarget.All);
+            foreach (var shot in shots)
+            {
+                string file = Path.Combine(dir, shot.Name.Replace(' ', '-') + ".jpg");
+                File.WriteAllBytes(file, shot.Jpeg);
+                Console.WriteLine($"saved {file} ({shot.Jpeg.Length} bytes)");
+            }
+
+            if (rest.Contains("describe"))
+            {
+                var mine = Edith.App.WindowsScreen.CaptureMonitors(Edith.App.WindowsScreen.ScreenTarget.Cursor).First();
+                string seen = await Edith.App.WindowsScreen.OcrPngAsync(mine.Png, CancellationToken.None);
+                Console.WriteLine("ocr chars: " + seen.Length);
+                Console.WriteLine(await GigaChatClient.Shared.DescribeImageAsync(CloudSettings.Load(), mine.Jpeg,
+                    "Опиши, что показано на экране: какая программа или сайт, что главное. Текст с экрана (возможны ошибки): " + (seen.Length > 1500 ? seen[..1500] : seen), CancellationToken.None));
+            }
+
+            return 0;
+        }
+
         if (args.Contains("--voice-samples"))
         {
             var samples = new Edith.Speech.HybridTtsService(Edith.Speech.TtsSettingsLoader.Load(@"C:\EDITH\config\tts.json"));

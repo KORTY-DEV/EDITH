@@ -5,7 +5,7 @@ namespace Edith.Core.Tests;
 public sealed class ScreenCommandTests
 {
     [Theory]
-    [InlineData("что на экране", ScreenCommandKind.Read, "")]
+    [InlineData("что в окне", ScreenCommandKind.Read, "")]
     [InlineData("Эдит, прочитай ошибку", ScreenCommandKind.Read, "")]
     [InlineData("что написано в окне?", ScreenCommandKind.Read, "")]
     [InlineData("что за ошибка", ScreenCommandKind.Read, "")]
@@ -73,4 +73,14 @@ public sealed class ScreenCommandTests
         Assert.StartsWith("Ошибка\nФайл не найден: C:\\x.txt\n", text);
         Assert.True(text.Length <= 100);
     }
+}
+
+public sealed class ScreenWholeScreenTests
+{
+    [Theory]
+    [InlineData("что на экране")]
+    [InlineData("посмотри на экран")]
+    [InlineData("что у меня на экране")]
+    public void WholeScreenQuestions_GoToTheBrain(string phrase) =>
+        Assert.False(ScreenCommandParser.TryParse(phrase, out _));
 }
