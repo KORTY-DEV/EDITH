@@ -202,6 +202,45 @@ public static class VoiceText
             return m.Groups["n"].Value + " " + words;
         });
 
+
+    private static readonly Dictionary<char, string> DriveNames = new()
+    {
+        ['C'] = "си", ['D'] = "ди", ['E'] = "и", ['F'] = "эф", ['G'] = "джи", ['H'] = "эйч", ['Z'] = "зет", ['A'] = "эй", ['B'] = "би",
+    };
+
+    /// <summary>"C:\EDITH\config\a.json" is "диск си, EDITH, config, a точка json": drives and slashes are not read as symbols.</summary>
+    private static string Paths(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text, @"(?<![\p{L}\d])(?<d>[A-Za-z]):[\\/](?<rest>[^\s,;:()«»""]*)", m =>
+        {
+            char drive = char.ToUpperInvariant(m.Groups["d"].Value[0]);
+            string[] parts = m.Groups["rest"].Value.TrimEnd('.').Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+            string tail = string.Join(", ", parts.Select(part => part.Replace(".", " точка ").Trim()));
+            string end = m.Groups["rest"].Value.EndsWith('.') ? "." : "";
+            return "диск " + (DriveNames.TryGetValue(drive, out string? name) ? name : drive.ToString()) + (tail.Length > 0 ? ", " + tail.TrimEnd('.', ' ') : "") + end;
+        });
+
+    /// <summary>"в г. Самара" → "в городе Самара"; "ул. Мира, д. 5, кв. 12" → "улица Мира, дом 5, квартира 12". A year ("2026 г.") is not touched.</summary>
+    private static string PlaceAbbreviations(string text)
+    {
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"(?<prep>(?<![\p{L}])(?:в|на|о|об|из|от|до|для|около|возле|к|по)\s+)?(?<![\d])(?<![\d]\s)г\.\s*(?=[А-ЯЁ])", m =>
+        {
+            string prep = m.Groups["prep"].Value.Trim().ToLowerInvariant();
+            string city = prep switch
+            {
+                "в" or "на" or "о" or "об" => "городе",
+                "из" or "от" or "до" or "для" or "около" or "возле" => "города",
+                "к" or "по" => "городу",
+                _ => "город",
+            };
+            return m.Groups["prep"].Value + city + " ";
+        });
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"(?<![\p{L}])ул\.\s*(?=[А-ЯЁ\d])", "улица ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"(?<![\p{L}])д\.\s*(?=\d)", "дом ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"(?<![\p{L}])кв\.\s*(?=\d)", "квартира ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"(?<![\p{L}])им\.\s*(?=[А-ЯЁ])", "имени ");
+        return text;
+    }
+
     public static string ForSpeech(string text, int maxChars = 900)
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
@@ -225,6 +264,8 @@ public static class VoiceText
         cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"(?m)^\s*(?:[-•]|\d+[.)])\s+", "");
         cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"(?<=[\p{L}\d\)])[ \t]*\r?\n+(?=\s*\S)", ". ");
         cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\s+([!?.,;:…])", "$1");
+        cleaned = Paths(cleaned);
+        cleaned = PlaceAbbreviations(cleaned);
         cleaned = Units(cleaned);
         foreach ((string pattern, string spoken) in Abbreviations)
             cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, pattern, spoken, rx);

@@ -114,6 +114,21 @@ public sealed class SileroTtsService : IDisposable
         return made;
     }
 
+    /// <summary>Synthesizes the text exactly as it would be spoken (same preparation) into a WAV file; for checks, not for playback.</summary>
+    public async Task RenderToFileAsync(string text, string path, CancellationToken cancellationToken = default)
+    {
+        string speech = SpeechPronunciation.Apply(text, "local", _settings.LocalRatePercent, _settings.LocalPauses);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await SynthesizeChunkAsync(Interlocked.Increment(ref _requestId), speech, _settings.LocalVoice, path, cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>Records the fixed phrases into <see cref="PhraseCache"/> with the current voice; returns how many were new.</summary>
     public async Task<int> PrerenderAsync(IEnumerable<string> phrases, CancellationToken cancellationToken = default)
     {

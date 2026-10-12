@@ -28,14 +28,14 @@ public static class SpokenNumbers
     private static readonly string[] MonthsGenitive =
     ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
-    private static readonly Regex Year = new(@"(?<![\d.,:])(?<y>(?:19|20)\d{2})(?<sp>\s*)(?<w>году|года|год|г\.)(?![\p{L}])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex Year = new(@"(?<![\d.,:])(?<y>(?:19|20)\d{2})(?<sp>\s*)(?<w>году|года|год|г\.)(?![\p{L}])(?<stop>(?<=г\.)(?=\s+(?-i:[А-ЯЁA-Z])))?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex DayMonth = new(@"(?<![\d.,:])(?<d>[1-9]|[12]\d|3[01])\s+(?<m>" + string.Join("|", MonthsGenitive) + @")(?![\p{L}])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex Clock = new(@"(?<![\d.,:])(?<h>[01]?\d|2[0-3]):(?<m>[0-5]\d)(?![\d:])", RegexOptions.Compiled);
     private static readonly Regex Signed = new(@"(?<![\p{L}\d.,])(?<sign>[+\-−–])(?<n>\d+(?:[.,]\d+)?)(?:(?<deg>\s*°\s*[CcСс]?(?![\p{L}]))|(?=\s*градус))", RegexOptions.Compiled);
     private static readonly Regex Degrees = new(@"(?<n>\d+(?:[.,]\d+)?)\s*°\s*[CcСс]?(?![\p{L}])", RegexOptions.Compiled);
     private static readonly Regex Percent = new(@"(?<n>\d+(?:[.,]\d+)?)\s*%", RegexOptions.Compiled);
     private static readonly Regex Size = new(@"(?<n>\d+(?:[.,]\d+)?)\s*(?<u>ГБ|МБ|ТБ|КБ|GB|MB|TB|KB|ГГц|МГц|GHz|MHz)(?![\p{L}])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex Number = new(@"(?<![\p{L}\d.,])(?<n>\d{1,3}(?:[  ]\d{3})+|\d+)(?:[.,](?<f>\d{1,2}))?(?![\d\p{L}]|:\d)(?<next>\s+\p{L}+)?", RegexOptions.Compiled);
+    private static readonly Regex Number = new(@"(?<prep>(?<![\p{L}])(?:около|до|от|из|для|без|после|свыше|менее|более|порядка)\s+)?(?<![\p{L}\d.,])(?<n>\d{1,3}(?:[  ]\d{3})+|\d+)(?:[.,](?<f>\d{1,2}))?(?![\d\p{L}]|:\d)(?=(?<next>\s+\p{L}+))?", RegexOptions.Compiled);
 
     private static readonly Regex Grouped = new(@"(?<![\p{L}\d.,])(?<n>\d{1,3}(?:[   ]\d{3})+)(?![\d])", RegexOptions.Compiled);
     private static readonly Regex NumericDate = new(@"(?<![\d.])(?<d>0?[1-9]|[12]\d|3[01])[./](?<m>0?[1-9]|1[0-2])[./](?<y>(?:19|20)\d{2})(?!\d|\.\d)", RegexOptions.Compiled);
@@ -89,8 +89,9 @@ public static class SpokenNumbers
         {
             int year = int.Parse(m.Groups["y"].Value);
             string word = m.Groups["w"].Value.ToLowerInvariant();
-            string @case = word.StartsWith("году") ? "prep" : word.StartsWith("года") ? "gen" : "nom";
-            return YearWords(year, @case) + " " + (word.StartsWith("г.") ? "года" : word);
+            string @case = word.StartsWith("году") ? "prep" : word.StartsWith("года") || word.StartsWith("г.") ? "gen" : "nom";
+            // "в 2026 г. Он приехал": the full stop after "г." also ends the sentence.
+            return YearWords(year, @case) + " " + (word.StartsWith("г.") ? "года" : word) + (m.Groups["stop"].Success ? "." : "");
         });
 
         text = DayMonth.Replace(text, m => Ordinal(int.Parse(m.Groups["d"].Value), "gen") + " " + m.Groups["m"].Value);
@@ -152,12 +153,15 @@ public static class SpokenNumbers
 
             string next = m.Groups["next"].Success ? m.Groups["next"].Value : "";
             bool feminine = IsFeminine(next.Trim());
+            // "около 16 градусов", "от 5 до 7": the number stands in the genitive after these words.
+            if (m.Groups["prep"].Success && !m.Groups["f"].Success)
+                return m.Groups["prep"].Value + string.Join(' ', Cardinal(value, feminine).Split(' ').Select(Genitive));
             string words = m.Groups["f"].Success && m.Groups["f"].Value == "5" && value >= 1 && HalfUnit(next.Trim())
                 ? (value == 1 ? (feminine ? "полторы" : "полтора") : Cardinal(value, feminine) + " с половиной")
                 : m.Groups["f"].Success
                     ? Decimal(digits + "," + m.Groups["f"].Value)
                     : Cardinal(value, feminine);
-            return words + next;
+            return words;
         });
     }
 
@@ -170,6 +174,22 @@ public static class SpokenNumbers
                w.StartsWith("год", StringComparison.Ordinal) || w.StartsWith("лет", StringComparison.Ordinal) || w.StartsWith("метр", StringComparison.Ordinal) ||
                w.StartsWith("литр", StringComparison.Ordinal) || w.StartsWith("килограмм", StringComparison.Ordinal) || w.StartsWith("кг", StringComparison.Ordinal);
     }
+
+    private static readonly Dictionary<string, string> GenitiveWords = new()
+    {
+        ["ноль"] = "ноля", ["один"] = "одного", ["одна"] = "одной", ["два"] = "двух", ["две"] = "двух", ["три"] = "трёх", ["четыре"] = "четырёх",
+        ["пять"] = "пяти", ["шесть"] = "шести", ["семь"] = "семи", ["восемь"] = "восьми", ["девять"] = "девяти", ["десять"] = "десяти",
+        ["одиннадцать"] = "одиннадцати", ["двенадцать"] = "двенадцати", ["тринадцать"] = "тринадцати", ["четырнадцать"] = "четырнадцати",
+        ["пятнадцать"] = "пятнадцати", ["шестнадцать"] = "шестнадцати", ["семнадцать"] = "семнадцати", ["восемнадцать"] = "восемнадцати",
+        ["девятнадцать"] = "девятнадцати", ["двадцать"] = "двадцати", ["тридцать"] = "тридцати", ["сорок"] = "сорока", ["пятьдесят"] = "пятидесяти",
+        ["шестьдесят"] = "шестидесяти", ["семьдесят"] = "семидесяти", ["восемьдесят"] = "восьмидесяти", ["девяносто"] = "девяноста", ["сто"] = "ста",
+        ["двести"] = "двухсот", ["триста"] = "трёхсот", ["четыреста"] = "четырёхсот", ["пятьсот"] = "пятисот", ["шестьсот"] = "шестисот",
+        ["семьсот"] = "семисот", ["восемьсот"] = "восьмисот", ["девятьсот"] = "девятисот",
+        ["тысяча"] = "тысячи", ["тысячи"] = "тысяч", ["тысяч"] = "тысяч", ["миллион"] = "миллиона", ["миллиона"] = "миллионов", ["миллионов"] = "миллионов",
+        ["миллиард"] = "миллиарда", ["миллиарда"] = "миллиардов", ["миллиардов"] = "миллиардов",
+    };
+
+    private static string Genitive(string word) => GenitiveWords.TryGetValue(word, out string? g) ? g : word;
 
     private static bool IsFeminine(string word)
     {

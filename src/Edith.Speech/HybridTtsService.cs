@@ -51,6 +51,9 @@ public sealed class HybridTtsService : IDisposable
     public Task<int> RenderVoiceSamplesAsync(CancellationToken cancellationToken = default) =>
         _local.IsConfigured ? _local.RenderSamplesAsync(cancellationToken) : Task.FromResult(0);
 
+    public Task RenderToFileAsync(string text, string path, CancellationToken cancellationToken = default) =>
+        _local.RenderToFileAsync(text, path, cancellationToken);
+
     public string VoiceSamplePath(string voice) => _local.SamplePath(voice);
 
     public Task WarmUpAsync(CancellationToken cancellationToken = default) =>

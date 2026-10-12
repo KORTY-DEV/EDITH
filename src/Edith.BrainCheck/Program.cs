@@ -79,6 +79,70 @@ internal static class Program
             return 0;
         }
 
+        // --tts-check [FILE]: each phrase goes through the real preparation and the real voice, then GigaAM listens to the result;
+        // "heard" next to "meant" shows where the voice stumbles (digits, names, abbreviations) without anyone listening.
+        static int EditDistance(string a, string b)
+        {
+            var previous = Enumerable.Range(0, b.Length + 1).ToArray();
+            for (int i = 1; i <= a.Length; i++)
+            {
+                var current = new int[b.Length + 1];
+                current[0] = i;
+                for (int j = 1; j <= b.Length; j++)
+                    current[j] = Math.Min(Math.Min(previous[j] + 1, current[j - 1] + 1), previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+                previous = current;
+            }
+
+            return previous[b.Length];
+        }
+
+        if (args.Contains("--tts-check"))
+        {
+            string[] rest = args.SkipWhile(a => a != "--tts-check").Skip(1).ToArray();
+            string[] checkPhrases = rest.Length > 0 && File.Exists(rest[0])
+                ? File.ReadAllLines(rest[0]).Where(l => l.Trim().Length > 0).ToArray()
+                :
+                [
+                    "Файл лежит в C:/EDITH/config.", "Он живёт в г. Самара на ул. Мира, д. 5.", "Температура +16°C, ветер 3 м/с, влажность 60%.",
+                    "Версия 1.0.7 вышла 10.10.2026.", "Видеокарта RTX 5090 стоит около 300 тыс. руб.", "Напомню через 25 минут, в 19:30 и завтра в полночь.",
+                    "Памяти осталось 8 192 МБ, это 3/4 от всей.", "Откройте Discord, Steam и Chrome.", "Это было в 2026 г. В 1990-х было иначе.",
+                    "Три плюс пять равно восемь.", "Сейчас в Самаре около 16 градусов, пасмурно.", "Ничего страшного, сэр, всё под контролем.",
+                ];
+            Edith.Core.Brain.VoiceText.NumberWords = Edith.Speech.SpokenNumbers.Apply;
+            var voice = new Edith.Speech.HybridTtsService(Edith.Speech.TtsSettingsLoader.Load(@"C:\EDITH\config	ts.json"));
+            await voice.WarmUpAsync();
+            using var giga = new Edith.Audio.GigaAmCommandRecognizer(Edith.Audio.SttSettings.Load(@"C:\EDITH\config\stt.json"));
+            int weak = 0;
+            foreach (string phrase in checkPhrases)
+            {
+                string meant = Edith.Core.Brain.VoiceText.ForSpeech(phrase);
+                string wav = Path.Combine(Path.GetTempPath(), "edith-ttscheck-" + Guid.NewGuid().ToString("N") + ".wav");
+                await voice.RenderToFileAsync(meant, wav);
+                using var reader = new NAudio.Wave.AudioFileReader(wav);
+                NAudio.Wave.ISampleProvider source = reader;
+                if (reader.WaveFormat.Channels == 2)
+                    source = new NAudio.Wave.SampleProviders.StereoToMonoSampleProvider(source);
+                var mono = new NAudio.Wave.SampleProviders.WdlResamplingSampleProvider(source, 16000);
+                var samples = new List<float>();
+                var buffer = new float[16000];
+                int n;
+                while ((n = mono.Read(buffer.AsSpan())) > 0)
+                    samples.AddRange(buffer.Take(n));
+                string heard = giga.Decode(samples.ToArray()).NormalizedText;
+                string Plain(string t) => System.Text.RegularExpressions.Regex.Replace(t.ToLowerInvariant().Replace('ё', 'е'), @"[^\p{L}\d ]", " ").Replace("  ", " ").Trim();
+                string a = Plain(meant), b = Plain(heard);
+                int distance = EditDistance(a, b);
+                double similarity = 1.0 - (double)distance / Math.Max(1, Math.Max(a.Length, b.Length));
+                bool bad = similarity < 0.75;
+                if (bad) weak++;
+                Console.WriteLine($"{(bad ? "WEAK " : "ok   ")}{similarity:0.00}  {phrase}" + Environment.NewLine + $"         meant: {meant}" + Environment.NewLine + $"         heard: {heard}");
+                try { File.Delete(wav); } catch { }
+            }
+
+            Console.WriteLine($"{checkPhrases.Length - weak}/{checkPhrases.Length} close to what was meant");
+            return weak == 0 ? 0 : 3;
+        }
+
         if (args.Contains("--voice-samples"))
         {
             var samples = new Edith.Speech.HybridTtsService(Edith.Speech.TtsSettingsLoader.Load(@"C:\EDITH\config\tts.json"));
