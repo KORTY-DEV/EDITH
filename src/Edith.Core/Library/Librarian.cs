@@ -456,9 +456,17 @@ public sealed class Librarian(
             CreateNoWindow = true,
         };
         using Process process = Process.Start(start)!;
-        _ = process.StandardOutput.ReadToEnd();
-        _ = process.StandardError.ReadToEnd();
-        process.WaitForExit(20000);
+        Task<string> output = process.StandardOutput.ReadToEndAsync();
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(20000))
+        {
+            // A git that waits for something (a lock, a prompt) must not hold the librarian for ever.
+            try { process.Kill(entireProcessTree: true); } catch { }
+        }
+        else
+        {
+            Task.WaitAll([output, error], 2000);
+        }
     }
 
     private Dictionary<string, string> LoadLedger()

@@ -1393,6 +1393,9 @@ public sealed class BrainToolRouter
 
         process.Start();
 
+        // Read while it runs: a chatty command would otherwise fill the pipe, stop, and look like a timeout.
+        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> errorTask = process.StandardError.ReadToEndAsync();
 
         if (!process.WaitForExit(
                 timeoutMs))
@@ -1412,13 +1415,9 @@ public sealed class BrainToolRouter
         }
 
 
-        string output =
-            process.StandardOutput
-                .ReadToEnd();
+        string output = outputTask.GetAwaiter().GetResult();
 
-        string error =
-            process.StandardError
-                .ReadToEnd();
+        string error = errorTask.GetAwaiter().GetResult();
 
 
         string result =

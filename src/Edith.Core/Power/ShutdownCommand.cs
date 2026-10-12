@@ -24,7 +24,7 @@ public static class ShutdownCommandParser
     private const string Verb = @"(?:выключи|выключить|отключи|заверши работу)";
 
     private static readonly Regex Cancel = new(
-        @"(?:отмени|отменить|останови|не надо)\s+(?:выключение|отключение)|не\s+выключай(?:\s+" + Pc + ")?",
+        @"(?:отмени|отменить|останови|не надо)\s+(?:выключение|отключение)|(?:^|\s)не\s+выключай(?:\s+" + Pc + @")?\s*$",
         RegexOptions.Compiled);
 
     private static readonly Regex Status = new(

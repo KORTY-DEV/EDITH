@@ -82,3 +82,23 @@ public sealed class GreetingTests
     public void OnlyShortHellosAreGreetings(string phrase, bool expected) =>
         Assert.Equal(expected, Edith.App.ResponseEngine.IsGreeting(phrase));
 }
+
+public sealed class ReflexTriggerTests
+{
+    [Theory]
+    [InlineData("открой гугл", true)]
+    [InlineData("открой гугл пожалуйста", true)]
+    [InlineData("открой гугл переводчик", false)]
+    [InlineData("открой блокнот и напиши список покупок", false)]
+    public void OpenSite_OnlyWhenItIsTheWholeCommand(string phrase, bool expected) =>
+        Assert.Equal(expected, Edith.App.ResponseEngine.IsWholeCommand(phrase, "открой гугл", "открой google"));
+
+    [Theory]
+    [InlineData("какая погода в самаре", true)]
+    [InlineData("что с погодой завтра", true)]
+    [InlineData("погоди секунду", false)]
+    [InlineData("погодите я не договорил", false)]
+    [InlineData("расскажи про погоду на завтра", true)]
+    public void Weather_NotForPogodi(string phrase, bool expected) =>
+        Assert.Equal(expected, Edith.App.ResponseEngine.IsWeatherAsk(phrase));
+}

@@ -40,3 +40,18 @@ public sealed class SafeJsonFileTests
         Assert.False(File.Exists(file));
     }
 }
+
+public sealed class ShutdownCancelWordingTests
+{
+    [Theory]
+    [InlineData("не выключай компьютер", true)]
+    [InlineData("не выключай", true)]
+    [InlineData("отмени выключение", true)]
+    [InlineData("не выключай свет в коридоре когда уйдёшь", false)]
+    [InlineData("я не выключай-то ему", false)]
+    public void Cancel_OnlyWhenItIsAboutTheComputer(string phrase, bool cancels)
+    {
+        bool parsed = Edith.Core.Power.ShutdownCommandParser.TryParse(phrase, DateTimeOffset.Now, out var command);
+        Assert.Equal(cancels, parsed && command.Kind == Edith.Core.Power.ShutdownCommandKind.Cancel);
+    }
+}

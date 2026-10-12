@@ -160,8 +160,14 @@ public sealed class ModelsWindow : Window
         try
         {
             using Process? process = Process.Start(new ProcessStartInfo("ollama", "list") { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true, StandardOutputEncoding = System.Text.Encoding.UTF8 });
-            string output = process?.StandardOutput.ReadToEnd() ?? "";
-            process?.WaitForExit(8000);
+            // Bounded: a hung ollama must not freeze the window that asks it.
+            Task<string>? read = process?.StandardOutput.ReadToEndAsync();
+            if (read is not null && !read.Wait(8000))
+            {
+                try { process!.Kill(entireProcessTree: true); } catch { }
+            }
+
+            string output = read is { IsCompletedSuccessfully: true } ? read.Result : "";
             foreach (string line in output.Split('\n').Skip(1))
             {
                 string[] parts = Regex.Split(line.Trim(), @"\s{2,}");

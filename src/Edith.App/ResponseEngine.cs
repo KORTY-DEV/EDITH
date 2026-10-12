@@ -790,7 +790,7 @@ public sealed class ResponseEngine
         // WINDOWS APPS
         // ====================================================
 
-        if (ContainsAny(
+        if (IsWholeCommand(
                 command,
                 "открой диспетчер задач",
                 "запусти диспетчер задач"))
@@ -801,7 +801,7 @@ public sealed class ResponseEngine
             return "Открываю.";
         }
 
-        if (ContainsAny(
+        if (IsWholeCommand(
                 command,
                 "открой блокнот",
                 "запусти блокнот"))
@@ -812,7 +812,7 @@ public sealed class ResponseEngine
             return "Открываю.";
         }
 
-        if (ContainsAny(
+        if (IsWholeCommand(
                 command,
                 "открой проводник",
                 "запусти проводник"))
@@ -823,7 +823,7 @@ public sealed class ResponseEngine
             return "Открываю.";
         }
 
-        if (ContainsAny(
+        if (IsWholeCommand(
                 command,
                 "открой калькулятор",
                 "запусти калькулятор"))
@@ -834,7 +834,7 @@ public sealed class ResponseEngine
             return "Открываю.";
         }
 
-        if (ContainsAny(
+        if (IsWholeCommand(
                 command,
                 "открой настройки",
                 "открой параметры"))
@@ -845,7 +845,7 @@ public sealed class ResponseEngine
             return "Открываю.";
         }
 
-        if (ContainsAny(
+        if (IsWholeCommand(
                 command,
                 "открой терминал",
                 "открой windows terminal"))
@@ -869,7 +869,7 @@ public sealed class ResponseEngine
         // WEBSITES
         // ====================================================
 
-        if (ContainsAny(
+        if (IsWholeCommand(
                 command,
                 "открой ютуб",
                 "открой youtube"))
@@ -880,7 +880,7 @@ public sealed class ResponseEngine
             return "Открываю.";
         }
 
-        if (ContainsAny(
+        if (IsWholeCommand(
                 command,
                 "открой гитхаб",
                 "открой github"))
@@ -891,7 +891,7 @@ public sealed class ResponseEngine
             return "Открываю.";
         }
 
-        if (ContainsAny(
+        if (IsWholeCommand(
                 command,
                 "открой гугл",
                 "открой google"))
@@ -977,8 +977,7 @@ public sealed class ResponseEngine
         // WEATHER
         // ====================================================
 
-        if (command.Contains(
-                "погод"))
+        if (IsWeatherAsk(command))
         {
             WeatherQuery weather = WeatherQuery.Parse(command);
 
@@ -1543,6 +1542,20 @@ public sealed class ResponseEngine
     public static bool IsGreeting(string command) =>
         command.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 5 &&
         System.Text.RegularExpressions.Regex.IsMatch(command, @"(?<![\p{L}])(привет|здравствуй(те)?|доброе утро|добрый (день|вечер)|добрый)(?![\p{L}])", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>The phrase is the whole command (a polite word may follow): "открой гугл" yes, "открой гугл переводчик" no.</summary>
+    public static bool IsWholeCommand(string command, params string[] phrases)
+    {
+        string[] fillers = ["пожалуйста", "быстро", "мне", "эдит", "сейчас", "давай", "ка"];
+        string[] words = command.ToLowerInvariant().Replace('ё', 'е').Split([' ', ',', '.', '!', '?'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => !fillers.Contains(w)).ToArray();
+        string text = string.Join(' ', words);
+        return phrases.Any(p => text.Equals(p, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>"какая погода", "погоду на завтра"; not "погодите" or "погоди секунду".</summary>
+    public static bool IsWeatherAsk(string command) =>
+        System.Text.RegularExpressions.Regex.IsMatch(command, @"(?<![\p{L}])погод(а|у|ы|е|ой|ку)(?![\p{L}])", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     private static bool ContainsAny(
         string value,

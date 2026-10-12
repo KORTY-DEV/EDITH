@@ -11,7 +11,7 @@ public static class SpokenTime
 {
     /// <summary>"через ..." amount and unit; the amount may be a number, a word or empty ("через час").</summary>
     public const string DelayPattern =
-        @"через\s+(?<amount>[\p{L}\d.,]+(?:\s+(?:с\s+)?половиной)?)?\s*(?<unit>минут[уы]?|час(?:а|ов)?|секунд[уы]?)";
+        @"через\s+(?<amount>[\p{L}\d.,]+(?:\s+(?:с\s+)?половиной|\s+(?:одну|один|два|две|три|четыре|пять|шесть|семь|восемь|девять))?)?\s*(?<unit>минут[уы]?|час(?:а|ов)?|секунд[уы]?|дн(?:я|ей|ь)|суток|сутки)";
 
     /// <summary>"[сегодня|завтра|послезавтра] в HH[:MM] [часов]".</summary>
     public const string AtPattern =
@@ -34,6 +34,19 @@ public static class SpokenTime
         return input.Trim();
     }
 
+    /// <summary>"двадцать пять" → 25: tens followed by a unit word.</summary>
+    private static bool TryCompound(string words, out double amount)
+    {
+        amount = 0;
+        string[] parts = words.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2 || !Numbers.TryGetValue(parts[0], out double tens) || tens < 20 || tens % 10 != 0 ||
+            !Numbers.TryGetValue(parts[1], out double units) || units is < 1 or > 9)
+            return false;
+
+        amount = tens + units;
+        return true;
+    }
+
     /// <summary>Delay from a <see cref="DelayPattern"/> match; between 10 seconds and 7 days.</summary>
     public static bool TryDelay(Match match, out TimeSpan delay, TimeSpan? max = null)
     {
@@ -48,13 +61,15 @@ public static class SpokenTime
         if (number.Length == 0)
             amount = 1;
         else if (!Numbers.TryGetValue(number, out amount) &&
-                 !double.TryParse(number.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out amount))
+                 !double.TryParse(number.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out amount) &&
+                 !TryCompound(number, out amount))
             return false;
 
         if (half)
             amount += 0.5;
 
-        delay = unit.StartsWith("час", StringComparison.Ordinal) ? TimeSpan.FromHours(amount)
+        delay = unit.StartsWith("дн", StringComparison.Ordinal) || unit.StartsWith("сут", StringComparison.Ordinal) ? TimeSpan.FromDays(amount)
+              : unit.StartsWith("час", StringComparison.Ordinal) ? TimeSpan.FromHours(amount)
               : unit.StartsWith("секунд", StringComparison.Ordinal) ? TimeSpan.FromSeconds(amount)
               : TimeSpan.FromMinutes(amount);
 

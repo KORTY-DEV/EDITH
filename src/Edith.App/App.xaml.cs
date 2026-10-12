@@ -731,6 +731,8 @@ public partial class App : Application
         GigaAmCommandRecognizer giga = _giga!;
         _ = Task.Run(async () =>
         {
+          try
+          {
             // The detector fires mid-word; the window must include the end of "Эдит"
             // (live runs heard "эт" and silence and dropped real wakes).
             await Task.Delay(350);
@@ -775,6 +777,13 @@ public partial class App : Application
                 $"elapsed-ms={clock.ElapsedMilliseconds}");
 
             FinishWakeConfirmation(detection, confirmed, heard);
+          }
+          catch (Exception ex)
+          {
+            // Whatever failed, the orb must not stay in "confirming" for ever: that would leave EDITH deaf until a restart.
+            VoiceDiagnostics.WriteRaw("wake-confirm-error.txt", ex.ToString());
+            FinishWakeConfirmation(detection, confirmed: false, heard: "", quiet: true);
+          }
         });
     }
 

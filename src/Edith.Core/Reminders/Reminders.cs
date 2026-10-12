@@ -58,6 +58,8 @@ public static class ReminderParser
     private static readonly Regex TextFirstDelay = new(Head + Lead + @"(?<text>.+?)\s+" + SpokenTime.DelayPattern + @"$", RegexOptions.Compiled);
     private static readonly Regex TextFirstAt = new(Head + Lead + @"(?<text>.+?)\s+" + SpokenTime.AtPattern + @"$", RegexOptions.Compiled);
 
+    private static readonly HashSet<string> TimeWords = ["утра", "дня", "вечера", "ночи", "сегодня", "завтра", "послезавтра", "утром", "вечером", "ночью", "днем"];
+
     private static readonly Regex List = new(
         @"(?:какие|что)\s+(?:у меня\s+)?(?:есть\s+)?напоминани|(?:что|о чем)\s+(?:ты\s+)?(?:должна\s+)?мне\s+напомнить|список напоминаний",
         RegexOptions.Compiled);
@@ -104,7 +106,8 @@ public static class ReminderParser
             }
 
             string what = ToSecondPerson(match.Groups["text"].Value.Trim());
-            if (what.Length < 2)
+            // "напомни в 7 вечера": the part of the day or the day word is the time, not what to remind about.
+            if (what.Length < 2 || TimeWords.Contains(what))
                 continue;
 
             command = new ReminderCommand(ReminderCommandKind.Add, what, due);

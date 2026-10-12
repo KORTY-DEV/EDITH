@@ -37,10 +37,47 @@ public static class SpokenNumbers
     private static readonly Regex Size = new(@"(?<n>\d+(?:[.,]\d+)?)\s*(?<u>ГБ|МБ|ТБ|КБ|GB|MB|TB|KB|ГГц|МГц|GHz|MHz)(?![\p{L}])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex Number = new(@"(?<![\p{L}\d.,])(?<n>\d{1,3}(?:[  ]\d{3})+|\d+)(?:[.,](?<f>\d{1,2}))?(?![\d\p{L}]|:\d)(?<next>\s+\p{L}+)?", RegexOptions.Compiled);
 
+    private static readonly Regex Grouped = new(@"(?<![\p{L}\d.,])(?<n>\d{1,3}(?:[   ]\d{3})+)(?![\d])", RegexOptions.Compiled);
+    private static readonly Regex NumericDate = new(@"(?<![\d.])(?<d>0?[1-9]|[12]\d|3[01])\.(?<m>0?[1-9]|1[0-2])\.(?<y>(?:19|20)\d{2})(?![\d.])", RegexOptions.Compiled);
+    private static readonly Regex Decade = new(@"(?<![\p{L}\d.,])(?<y>(?:19|20)\d0)-х(?![\p{L}])", RegexOptions.Compiled);
+    private static readonly Regex OrdinalSuffix = new(@"(?<![\p{L}\d.,])(?<n>\d{1,2})-(?<s>й|го|м)(?![\p{L}])", RegexOptions.Compiled);
+    private static readonly Regex SignedPlain = new(@"(?<=^|[\s(])(?<sign>[+\-−])(?<n>\d+(?:[.,]\d+)?)(?![\d\p{L}\-])", RegexOptions.Compiled);
+    private static readonly Regex Rouble = new(@"(?<n>\d+(?:[.,]\d+)?)\s*(?:₽|руб\.?(?![\p{L}]))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex GpuModel = new(@"(?<![\p{L}])(?<p>RTX|GTX|RX|GT)\s+(?<a>[1-9]\d)(?<b>\d{2})(?![\d])", RegexOptions.Compiled);
+    private static readonly Regex DigitsLetters = new(@"(?<![\p{L}\d.,])(?<n>\d{1,4})(?<l>[A-Za-z]{1,3})(?![\p{L}\d])", RegexOptions.Compiled);
+
     public static string Apply(string text)
     {
         if (string.IsNullOrWhiteSpace(text) || !text.Any(char.IsDigit))
             return text;
+
+        // "8 192 МБ", "199 999": the groups of three are one number, whatever follows.
+        text = Grouped.Replace(text, m => System.Text.RegularExpressions.Regex.Replace(m.Groups["n"].Value, @"[   ]", ""));
+
+        text = NumericDate.Replace(text, m =>
+            Ordinal(int.Parse(m.Groups["d"].Value), "gen") + " " + MonthsGenitive[int.Parse(m.Groups["m"].Value) - 1] + " " +
+            YearWords(int.Parse(m.Groups["y"].Value), "gen") + " года");
+
+        text = Decade.Replace(text, m =>
+        {
+            int year = int.Parse(m.Groups["y"].Value);
+            string tens = OrdTens[year % 100 / 10];
+            string hundreds = Cardinal(year / 100 * 100, false);
+            if (hundreds.StartsWith("одна тысяча", StringComparison.Ordinal))
+                hundreds = hundreds[5..]; // "тысяча девятьсот девяностых", not "одна тысяча"
+            return hundreds + " " + tens[..^2] + "ых";
+        });
+
+        text = OrdinalSuffix.Replace(text, m =>
+        {
+            int n = int.Parse(m.Groups["n"].Value);
+            if (n is < 1 or > 99)
+                return m.Value;
+            return Ordinal(n, m.Groups["s"].Value switch { "го" => "gen", "м" => "prep", _ => "nom" });
+        });
+
+        text = Rouble.Replace(text, m => m.Groups["n"].Value + " " + Plural(IntegerPart(m.Groups["n"].Value), "рубль", "рубля", "рублей"));
 
         text = Year.Replace(text, m =>
         {
@@ -64,6 +101,9 @@ public static class SpokenNumbers
             (m.Groups["sign"].Value == "+" ? "плюс " : "минус ") + Decimal(m.Groups["n"].Value) +
             (m.Groups["deg"].Success ? " " + Plural(IntegerPart(m.Groups["n"].Value), "градус", "градуса", "градусов") : ""));
 
+        text = SignedPlain.Replace(text, m =>
+            (m.Groups["sign"].Value == "+" ? "плюс " : "минус ") + Decimal(m.Groups["n"].Value));
+
         text = Degrees.Replace(text, m => Decimal(m.Groups["n"].Value) + " " + Plural(IntegerPart(m.Groups["n"].Value), "градус", "градуса", "градусов"));
         text = Percent.Replace(text, m => Decimal(m.Groups["n"].Value) + " " + Plural(IntegerPart(m.Groups["n"].Value), "процент", "процента", "процентов"));
 
@@ -83,6 +123,11 @@ public static class SpokenNumbers
             return Decimal(m.Groups["n"].Value) + " " + word;
         });
 
+        // Video cards are said in pairs: "RTX 5090" is "пятьдесят девяносто", not "пять тысяч девяносто".
+        text = GpuModel.Replace(text, m => m.Groups["p"].Value + " " + Cardinal(int.Parse(m.Groups["a"].Value), false) + " " + Cardinal(int.Parse(m.Groups["b"].Value), false));
+        // "3600X", "8b": the number and the letter are two words.
+        text = DigitsLetters.Replace(text, m => m.Groups["n"].Value + " " + m.Groups["l"].Value);
+
         return Number.Replace(text, m =>
         {
             string digits = m.Groups["n"].Value.Replace(" ", "").Replace(" ", "");
@@ -91,11 +136,23 @@ public static class SpokenNumbers
 
             string next = m.Groups["next"].Success ? m.Groups["next"].Value : "";
             bool feminine = IsFeminine(next.Trim());
-            string words = m.Groups["f"].Success
-                ? Decimal(digits + "," + m.Groups["f"].Value)
-                : Cardinal(value, feminine);
+            string words = m.Groups["f"].Success && m.Groups["f"].Value == "5" && value >= 1 && HalfUnit(next.Trim())
+                ? (value == 1 ? (feminine ? "полторы" : "полтора") : Cardinal(value, feminine) + " с половиной")
+                : m.Groups["f"].Success
+                    ? Decimal(digits + "," + m.Groups["f"].Value)
+                    : Cardinal(value, feminine);
             return words + next;
         });
+    }
+
+    /// <summary>"1,5 часа" is "полтора часа", "2,5 метра" is "два с половиной метра".</summary>
+    private static bool HalfUnit(string word)
+    {
+        string w = word.ToLowerInvariant();
+        return w.StartsWith("час", StringComparison.Ordinal) || w.StartsWith("минут", StringComparison.Ordinal) || w.StartsWith("секунд", StringComparison.Ordinal) ||
+               w.StartsWith("дн", StringComparison.Ordinal) || w.StartsWith("недел", StringComparison.Ordinal) || w.StartsWith("месяц", StringComparison.Ordinal) ||
+               w.StartsWith("год", StringComparison.Ordinal) || w.StartsWith("лет", StringComparison.Ordinal) || w.StartsWith("метр", StringComparison.Ordinal) ||
+               w.StartsWith("литр", StringComparison.Ordinal) || w.StartsWith("килограмм", StringComparison.Ordinal) || w.StartsWith("кг", StringComparison.Ordinal);
     }
 
     private static bool IsFeminine(string word)
